@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "themes": [
+    {
+      "id": "light",
+      "name": "Clair",
+      "description": "Palette claire avec des contrastes adaptés aux surfaces et aux textes de l’application.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "6a86dd030fa0a3db302a9dd64da10c3fc0724850a31825a6ef6b440530ed7fc5"
+    }
+  ]
+}

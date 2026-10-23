@@ -12,7 +12,7 @@ from typing import Any
 SETTINGS_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "osclinux" / "settings.json"
 DEFAULTS: dict[str, Any] = {
     "osc": {"host": "127.0.0.1", "port": 9000, "receive_port": 9001, "interval": 2, "mode": "alternate", "startup": False},
-    "appearance": {"theme": "dark"},
+    "appearance": {"theme": "base"},
     "module_options": {},
     "order": [],
     "timeline": None,

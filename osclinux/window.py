@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import sys
 import time
@@ -11,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QMimeData, QObject, QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QDrag, QPainter, QPalette
+from PySide6.QtGui import QColor, QDrag, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from osclinux.module_store import ModuleStore, ModuleStoreError
+from osclinux.theme_store import BASE_THEME_ID, ThemeStore, ThemeStoreError
 from osclinux.providers import ModuleDataProvider
 from osclinux.settings import DEFAULTS, SETTINGS_PATH, load_settings, save_settings
 from osclinux.osc import OscClient, VRChatListener
@@ -54,10 +56,15 @@ QWidget { color: #dce7ff; font-family: 'Noto Sans', 'DejaVu Sans', sans-serif; f
 QFrame#sidebar { background: #0a1120; border-right: 1px solid #1c2a45; }
 QFrame#topbar { background: #0d1425; border-bottom: 1px solid #1c2a45; }
 QFrame#panel, QFrame#moduleCard { background: #111c31; border: 1px solid #263a5b; border-radius: 10px; }
+QFrame#vrchatPreview { background: #0a1120; border: 1px solid #263a5b; border-radius: 10px; }
+QFrame#vrchatBubble { background: rgba(34, 36, 42, 235); border: 1px solid #454957; border-radius: 12px; }
 QFrame#moduleCard[moduleEnabled="true"] { border: 1px solid #426cf3; }
 QLabel#title { font-size: 22px; font-weight: 700; color: #f2f6ff; }
 QLabel#pageTitle { font-size: 20px; font-weight: 700; color: #ecf2ff; }
 QLabel#muted { color: #8fa6ce; }
+QLabel#previewEyebrow { color: #8fa6ce; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+QLabel#vrchatPreviewText { color: #f2f3f5; font-size: 16px; }
+QLabel#previewHint { color: #8992a5; font-size: 11px; }
 QLabel#icon { background: #1a2a47; border-radius: 20px; padding: 7px; font-size: 22px; }
 QPushButton { background: #1a2944; border: 1px solid #2d4266; border-radius: 7px; padding: 9px 13px; color: #dce7ff; }
 QPushButton:hover { background: #263a60; border-color: #587df7; }
@@ -83,6 +90,14 @@ QScrollArea { border: 0; background: #0d1425; }
 QStackedWidget { background: #0d1425; }
 QScrollArea > QWidget { background: #0d1425; }
 QAbstractScrollArea::viewport { background: #0d1425; }
+QScrollBar:horizontal { height: 10px; background: transparent; margin: 3px 8px 2px 8px; }
+QScrollBar:vertical { width: 10px; background: transparent; margin: 8px 2px 8px 2px; }
+QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background: #2c4167; border: 1px solid #3a5685; border-radius: 4px; min-width: 28px; min-height: 28px; }
+QScrollBar::handle:horizontal:hover, QScrollBar::handle:vertical:hover { background: #4969a3; border-color: #6688ca; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { width: 0; height: 0; border: none; background: transparent; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 QListWidget#timelineSources::item { background: #111c31; border: 1px solid #263a5b; border-radius: 8px; margin: 4px; padding: 8px; }
 QListWidget#timelineSources::item:selected { background: #1b3157; border-color: #5974ff; }
 QLabel { background: transparent; }
@@ -91,6 +106,53 @@ QStatusBar { color: #8fa6ce; border-top: 1px solid #1c2a45; }
 QSlider::groove:horizontal { height: 5px; background: #283a5a; border-radius: 2px; }
 QSlider::handle:horizontal { width: 14px; margin: -5px 0; border-radius: 7px; background: #5974ff; }
 """
+
+LIGHT_STYLE = (
+    DARK_STYLE.replace("#0d1425", "#e9eef7")
+    .replace("#0a1120", "#dfe6f1")
+    .replace("#111c31", "#f5f7fb")
+    .replace("#0c172a", "#ffffff")
+    .replace("#dce7ff", "#17243b")
+    .replace("#f2f6ff", "#101a30")
+    .replace("#ecf2ff", "#101a30")
+    .replace("#8fa6ce", "#526580")
+    .replace("#b4c5e7", "#263957")
+    + """
+QPushButton { background: #f5f7fb; border-color: #c5d1e2; color: #263957; }
+QPushButton:hover { background: #e7edf7; border-color: #7891bd; }
+QPushButton#primary { background: #334ff0; border-color: #536bff; color: white; }
+QPushButton#primary:hover { background: #4560ff; }
+QPushButton#nav { color: #263957; }
+QPushButton#nav:checked { background: #344ff0; color: white; }
+QPushButton#nav:hover:!checked { background: #cbd7e8; }
+QPushButton#storeAdd { background: #16834f; border-color: #22b970; color: white; }
+QPushButton#storeRemove { background: #fff0f3; color: #a72e4b; }
+QPushButton#storeUpdate { background: #e7efff; color: #31548e; }
+QLabel#icon { background: #dbe7ff; color: #31548e; }
+QLineEdit, QComboBox, QSpinBox, QTextEdit, QListWidget { background: #ffffff; border-color: #c5d1e2; color: #17243b; }
+QTextEdit { color: #526580; }
+QFrame#vrchatPreview { background: #edf2fa; border-color: #c5d1e2; }
+QFrame#vrchatBubble { background: rgba(34, 36, 42, 245); border-color: #454957; }
+QLabel#vrchatPreviewText { color: #f2f3f5; }
+QLabel#previewHint { color: #66748a; }
+QScrollBar:horizontal, QScrollBar:vertical { background: transparent; }
+QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background: #b8c6da; border-color: #a4b4cc; }
+QScrollBar::handle:horizontal:hover, QScrollBar::handle:vertical:hover { background: #8ea5c7; border-color: #738db5; }
+QListWidget#timelineSources::item { background: #f5f7fb; border-color: #c5d1e2; }
+QListWidget#timelineSources::item:selected { background: #dce7fb; border-color: #5974ff; }
+QStatusBar { color: #526580; }
+QSlider::groove:horizontal { background: #cbd6e5; }
+QSlider::handle:horizontal { background: #5974ff; }
+"""
+)
+
+
+def _replace_style_colors(stylesheet: str, replacements: dict[str, str]) -> str:
+    return re.sub(
+        r"#[0-9a-fA-F]{6}",
+        lambda match: replacements.get(match.group(0).lower(), match.group(0)),
+        stylesheet,
+    )
 
 
 class StatusBridge(QObject):
@@ -118,11 +180,13 @@ class TimelineWidget(QWidget):
         self.sequence = [dict(item) for item in sequence]
         self.names = names
         self.selected_id = ""
+        self.light_theme = False
+        self.theme_colors: dict[str, str] = {}
         self.drag_index = -1
         self.resize_index = -1
         self.press_x = 0
         self.setAcceptDrops(True)
-        self.setMinimumHeight(145)
+        self.setMinimumHeight(125)
         self.setMouseTracking(True)
         self._update_width()
 
@@ -132,9 +196,19 @@ class TimelineWidget(QWidget):
         self._update_width()
         self.update()
 
+    def set_light_theme(self, enabled: bool) -> None:
+        self.light_theme = enabled
+        self.update()
+
+    def set_theme_colors(self, colors: dict[str, str]) -> None:
+        self.theme_colors = dict(colors)
+        self.update()
+
     def _update_width(self):
         total = sum(int(item.get("duration", 10)) for item in self.sequence)
-        self.setMinimumWidth(max(900, 90 + total * 12))
+        content_width = max(900, 70 + total * 12)
+        self.setMinimumWidth(content_width)
+        self.resize(content_width, 125)
 
     def _positions(self):
         x = 54
@@ -148,31 +222,38 @@ class TimelineWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#0d1425"))
+        color = lambda key, fallback: self.theme_colors.get(key, fallback)
+        background = color("#0d1425", "#0d1425")
+        tick_color = color("#8fa6ce", "#8fa6ce")
+        guide_color = color("#263a5b", "#263a5b")
+        foreground = color("#f2f6ff", "#f2f6ff")
+        secondary = color("#b8c8e6", "#b8c8e6")
+        card_colors = [color(key, key) for key in ("#263d70", "#1c5360", "#593664", "#61501f", "#244e3b")]
+        painter.fillRect(self.rect(), QColor(background))
         positions = self._positions()
         total = sum(int(item.get("duration", 10)) for item in self.sequence)
-        painter.setPen(QColor("#8fa6ce"))
-        for second in range(0, total + 11, 5):
+        painter.setPen(QColor(tick_color))
+        last_tick = ((total + 4) // 5) * 5
+        for second in range(0, last_tick + 1, 5):
             x = 54 + second * 12
             painter.drawLine(x, 25, x, 43)
             painter.drawText(x - 12, 18, f"{second}s")
-        painter.setPen(QColor("#263a5b"))
+        painter.setPen(QColor(guide_color))
         painter.drawLine(54, 42, max(70, 54 + total * 12), 42)
-        colors = ["#263d70", "#1c5360", "#593664", "#61501f", "#244e3b"]
         for index, (item, (x, width)) in enumerate(zip(self.sequence, positions)):
             selected = item["id"] == self.selected_id
-            painter.setBrush(QColor(colors[index % len(colors)]))
+            painter.setBrush(QColor(card_colors[index % len(card_colors)]))
             painter.setPen(QColor("#718eff") if selected else QColor("#3b5685"))
             painter.drawRoundedRect(x, 54, width - 4, 58, 7, 7)
-            painter.setPen(QColor("#f2f6ff"))
+            painter.setPen(QColor(foreground))
             name = self.names.get(item["id"], item["id"])
             painter.drawText(x + 9, 78, painter.fontMetrics().elidedText(name, Qt.TextElideMode.ElideRight, max(20, width - 25)))
-            painter.setPen(QColor("#b8c8e6"))
+            painter.setPen(QColor(secondary))
             painter.drawText(x + 9, 99, f'{item.get("duration", 10)} s')
-            painter.setPen(QColor("#91a8ce"))
+            painter.setPen(QColor(tick_color))
             painter.drawLine(x + width - 7, 59, x + width - 7, 106)
         if not self.sequence:
-            painter.setPen(QColor("#8fa6ce"))
+            painter.setPen(QColor(tick_color))
             painter.drawText(54, 83, "Glissez ici les modules à planifier.")
 
     def _index_at(self, x):
@@ -262,10 +343,19 @@ class MainWindow(QMainWindow):
         self.log_lines: list[str] = []
         self.settings.setdefault("module_options", {})
         self.settings.setdefault("order", [])
+        saved_theme = self.settings.setdefault("appearance", {}).get("theme", "base")
+        if saved_theme == "dark":
+            self.settings["appearance"]["theme"] = BASE_THEME_ID
+        elif saved_theme == "light":
+            self.settings["appearance"]["theme"] = "light"
         self.store = ModuleStore()
+        self.theme_store = ThemeStore()
         self.catalog: list[dict] = []
         self._catalog_by_id: dict[str, dict] = {}
         self._pending_modules: set[str] = set()
+        self.theme_catalog: list[dict] = []
+        self._theme_by_id: dict[str, dict] = {}
+        self._pending_themes: set[str] = set()
         self.store_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="osclinux-store")
         self.store_bridge = StoreBridge()
         self.store_bridge.completed.connect(self._store_completed)
@@ -281,9 +371,11 @@ class MainWindow(QMainWindow):
         self.cycle_timer.setSingleShot(True)
         self.cycle_timer.timeout.connect(self._send_next)
         self._build_ui()
+        self._change_theme(self.settings["appearance"].get("theme", BASE_THEME_ID))
         self.refresh_preview()
         self._append_log("OSCLinux est prêt. Aucun module n’est installé par défaut.")
         QTimer.singleShot(100, self.refresh_catalog)
+        QTimer.singleShot(150, self.refresh_theme_catalog)
         if self.settings["osc"].get("startup"):
             self._set_autostart(True, quiet=True)
 
@@ -307,7 +399,7 @@ class MainWindow(QMainWindow):
         nav_group = QButtonGroup(self)
         nav_group.setExclusive(True)
         for index, (text, icon) in enumerate([
-            ("Modules", "▦"), ("Règle Temporelle", "◷"), ("Configuration OSC", "◉"), ("Apparence", "◈"),
+            ("Modules", "▦"), ("Règle Temporelle", "◷"), ("Configuration OSC", "◉"), ("Thèmes", "◈"),
             ("Paramètres généraux", "⚙"), ("Journal", "▤"),
         ]):
             button = QPushButton(f"{icon}   {text}")
@@ -351,10 +443,6 @@ class MainWindow(QMainWindow):
         main_v.addWidget(topbar)
 
         self.pages = QStackedWidget()
-        self.pages.setAutoFillBackground(True)
-        pages_palette = self.pages.palette()
-        pages_palette.setColor(QPalette.ColorRole.Window, QColor("#0d1425"))
-        self.pages.setPalette(pages_palette)
         self.pages.addWidget(self._modules_page())
         self.pages.addWidget(self._temporal_page())
         self.pages.addWidget(self._osc_page())
@@ -430,6 +518,134 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.store_bridge.completed.emit("catalog", None, str(exc))
         future.add_done_callback(completed)
+
+    def refresh_theme_catalog(self) -> None:
+        if not hasattr(self, "refresh_theme_button"):
+            return
+        self.refresh_theme_button.setEnabled(False)
+        self.theme_status.setText("Récupération du catalogue des thèmes…")
+        future = self.store_executor.submit(self.theme_store.fetch_catalog)
+
+        def completed(result) -> None:
+            try:
+                catalog, online = result.result()
+                self.store_bridge.completed.emit("theme_catalog", (catalog, online), "")
+            except Exception as exc:
+                self.store_bridge.completed.emit("theme_catalog", None, str(exc))
+
+        future.add_done_callback(completed)
+
+    def _render_theme_catalog(self) -> None:
+        while self.theme_catalog_layout.count():
+            item = self.theme_catalog_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        installed = self.theme_store.installed_versions()
+        if not self.theme_catalog:
+            empty = QLabel("Aucun thème supplémentaire dans le catalogue.")
+            empty.setObjectName("muted")
+            self.theme_catalog_layout.addWidget(empty)
+        active = self.settings["appearance"].get("theme", BASE_THEME_ID)
+        self.base_theme_action.setText("Thème actif" if active == BASE_THEME_ID else "Utiliser")
+        self.base_theme_action.setEnabled(active != BASE_THEME_ID)
+        for entry in self.theme_catalog:
+            theme_id = entry["id"]
+            row = QFrame()
+            row.setObjectName("moduleCard")
+            row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(14, 10, 12, 10)
+            row_layout.setSpacing(10)
+            info = QVBoxLayout()
+            name = QLabel(entry["name"])
+            name.setStyleSheet("font-size:15px;font-weight:700")
+            description = QLabel(entry["description"])
+            description.setObjectName("muted")
+            description.setWordWrap(True)
+            metadata = QLabel(f"Version {entry['version']}  ·  Auteur : {entry['author']}")
+            metadata.setObjectName("muted")
+            info.addWidget(name)
+            info.addWidget(description)
+            info.addWidget(metadata)
+            row_layout.addLayout(info, 1)
+            installed_version = installed.get(theme_id)
+            if theme_id in self._pending_themes:
+                pending = QPushButton("…")
+                pending.setEnabled(False)
+                row_layout.addWidget(pending)
+            elif installed_version is None:
+                add = QPushButton("＋")
+                add.setObjectName("storeAdd")
+                add.setToolTip("Installer ce thème")
+                add.setFixedSize(42, 40)
+                add.clicked.connect(lambda _checked=False, tid=theme_id: self._theme_action("install", tid))
+                row_layout.addWidget(add)
+            else:
+                remove = QPushButton("×")
+                remove.setObjectName("storeRemove")
+                remove.setToolTip("Désinstaller ce thème")
+                remove.setFixedSize(42, 40)
+                remove.clicked.connect(lambda _checked=False, tid=theme_id: self._theme_action("uninstall", tid))
+                row_layout.addWidget(remove)
+                use = QPushButton("Thème actif" if active == theme_id else "Utiliser")
+                use.setEnabled(active != theme_id)
+                use.setFixedWidth(110)
+                use.clicked.connect(lambda _checked=False, tid=theme_id: self._use_theme(tid))
+                row_layout.addWidget(use)
+                if self._version_newer(entry["version"], installed_version):
+                    update = QPushButton("⬆")
+                    update.setObjectName("storeUpdate")
+                    update.setToolTip(f"Mettre à jour depuis {installed_version}")
+                    update.setFixedSize(42, 40)
+                    update.clicked.connect(lambda _checked=False, tid=theme_id: self._theme_action("update", tid))
+                    row_layout.addWidget(update)
+            self.theme_catalog_layout.addWidget(row)
+        self.theme_catalog_layout.addStretch(1)
+
+    def _theme_action(self, operation: str, theme_id: str) -> None:
+        if theme_id in self._pending_themes:
+            return
+        if operation == "uninstall":
+            entry = self._theme_by_id[theme_id]
+            answer = QMessageBox.question(self, "Désinstaller le thème", f"Retirer « {entry['name']} » ?")
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        entry = self._theme_by_id[theme_id]
+        self._pending_themes.add(theme_id)
+        self.theme_status.setText(f"{operation.capitalize()} de {entry['name']}…")
+        self._render_theme_catalog()
+
+        def perform() -> None:
+            if operation == "install":
+                self.theme_store.install(entry)
+            elif operation == "update":
+                self.theme_store.update(entry)
+            elif operation == "uninstall":
+                self.theme_store.uninstall(theme_id)
+            else:
+                raise ThemeStoreError("Action de thème inconnue.")
+
+        future = self.store_executor.submit(perform)
+
+        def completed(result) -> None:
+            try:
+                result.result()
+                self.store_bridge.completed.emit(f"theme_action:{operation}:{theme_id}", True, "")
+            except Exception as exc:
+                self.store_bridge.completed.emit(f"theme_action:{operation}:{theme_id}", None, str(exc))
+
+        future.add_done_callback(completed)
+
+    def _use_theme(self, theme_id: str) -> None:
+        if theme_id != BASE_THEME_ID and theme_id not in self.theme_store.installed_versions():
+            QMessageBox.information(self, "Thème non installé", "Installez d’abord ce thème depuis le catalogue.")
+            return
+        self.settings["appearance"]["theme"] = theme_id
+        self._change_theme(theme_id)
+        self.save_all()
+        if hasattr(self, "theme_catalog_layout"):
+            self._render_theme_catalog()
 
     def _render_catalog(self) -> None:
         while self.catalog_layout.count():
@@ -538,6 +754,9 @@ class MainWindow(QMainWindow):
             raise ModuleStoreError("Action de module inconnue.")
 
     def _store_completed(self, operation: str, result: object, error: str) -> None:
+        if operation == "theme_catalog" or operation.startswith("theme_action:"):
+            self._theme_store_completed(operation, result, error)
+            return
         if operation == "catalog":
             self.refresh_catalog_button.setEnabled(True)
             if error:
@@ -590,6 +809,45 @@ class MainWindow(QMainWindow):
         self._ensure_timeline()
         self.save_all()
         self._render_catalog()
+
+    def _theme_store_completed(self, operation: str, result: object, error: str) -> None:
+        if operation == "theme_catalog":
+            self.refresh_theme_button.setEnabled(True)
+            if error:
+                self.theme_status.setText(f"Catalogue de thèmes indisponible : {error}")
+                self._append_log(f"Catalogue de thèmes indisponible : {error}")
+                return
+            self.theme_catalog, online = result
+            self._theme_by_id = {entry["id"]: entry for entry in self.theme_catalog}
+            source = "en ligne" if online else "local (hors connexion)"
+            self.theme_status.setText(f"{len(self.theme_catalog)} thèmes disponibles · catalogue {source}")
+            self._render_theme_catalog()
+            self._append_log(f"Catalogue de thèmes chargé ({source}, {len(self.theme_catalog)} thèmes).")
+            return
+
+        _, action, theme_id = operation.split(":", 2)
+        self._pending_themes.discard(theme_id)
+        entry = self._theme_by_id.get(theme_id, {"name": theme_id, "version": "?"})
+        if error:
+            self.theme_status.setText(f"Échec de {action} pour {entry['name']} : {error}")
+            self._append_log(f"Erreur {action} du thème {theme_id} : {error}")
+            self._render_theme_catalog()
+            QMessageBox.warning(self, "Action sur le thème impossible", f"{entry['name']} n’a pas pu être traité.\n\nDétail : {error}")
+            return
+        if action == "uninstall" and self.settings["appearance"].get("theme") == theme_id:
+            self.settings["appearance"]["theme"] = BASE_THEME_ID
+            self._change_theme(BASE_THEME_ID)
+        elif action == "update" and self.settings["appearance"].get("theme") == theme_id:
+            self._change_theme(theme_id)
+        if action == "install":
+            self.theme_status.setText(f"{entry['name']} installé. Vous pouvez maintenant l’appliquer.")
+        elif action == "update":
+            self.theme_status.setText(f"{entry['name']} mis à jour vers la version {entry['version']}.")
+        else:
+            self.theme_status.setText(f"{entry['name']} désinstallé.")
+        self._append_log(f"Thème {entry['name']} : {action} terminé.")
+        self.save_all()
+        self._render_theme_catalog()
 
     def _manage_module(self, entry: dict) -> None:
         module_id = entry["id"]
@@ -677,20 +935,58 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(22, 18, 22, 18)
-        layout.addLayout(self._page_header("Apparence", "Personnalisez l’aperçu et la présentation des messages."))
-        panel = QFrame()
-        panel.setObjectName("panel")
-        form = QVBoxLayout(panel)
-        form.addWidget(self._section_title("Style de l’application", "Le thème sombre est optimisé pour les longues sessions."))
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Sombre", "Clair"])
-        self.theme_combo.setCurrentText("Sombre" if self.settings["appearance"].get("theme", "dark") == "dark" else "Clair")
-        self.theme_combo.currentTextChanged.connect(self._change_theme)
-        form.addWidget(self._field("Thème", self.theme_combo))
-        form.addWidget(QLabel("Limite VRChat : le texte de chatbox est limité à 144 caractères."))
-        layout.addWidget(panel)
-        layout.addStretch(1)
-        return page
+        layout.setSpacing(12)
+        layout.addLayout(self._page_header("Thèmes", "Choisissez l’apparence d’OSCLinux ou installez des thèmes depuis le catalogue."))
+        current_panel = QFrame()
+        current_panel.setObjectName("panel")
+        current_layout = QVBoxLayout(current_panel)
+        current_layout.addWidget(self._section_title("Thème de base", "Toujours installé et impossible à supprimer."))
+        self.base_theme_row = self._build_base_theme_row()
+        current_layout.addWidget(self.base_theme_row)
+        layout.addWidget(current_panel)
+
+        catalog_panel = QFrame()
+        catalog_panel.setObjectName("panel")
+        catalog_layout = QVBoxLayout(catalog_panel)
+        header = QHBoxLayout()
+        header.addWidget(self._section_title("Catalogue des thèmes", "Installez uniquement les thèmes que vous souhaitez utiliser."), 1)
+        self.refresh_theme_button = QPushButton("↻  Actualiser le catalogue")
+        self.refresh_theme_button.clicked.connect(self.refresh_theme_catalog)
+        header.addWidget(self.refresh_theme_button, 0, Qt.AlignmentFlag.AlignTop)
+        catalog_layout.addLayout(header)
+        self.theme_status = QLabel("Chargement du catalogue des thèmes…")
+        self.theme_status.setObjectName("muted")
+        catalog_layout.addWidget(self.theme_status)
+        self.theme_catalog_panel = QFrame()
+        self.theme_catalog_panel.setObjectName("panel")
+        self.theme_catalog_layout = QVBoxLayout(self.theme_catalog_panel)
+        self.theme_catalog_layout.setContentsMargins(10, 10, 10, 10)
+        self.theme_catalog_layout.setSpacing(8)
+        catalog_layout.addWidget(self.theme_catalog_panel, 1)
+        layout.addWidget(catalog_panel, 1)
+        layout.addWidget(QLabel("Limite VRChat : le texte de chatbox est limité à 144 caractères."))
+        return self._scroll(page)
+
+    def _build_base_theme_row(self) -> QFrame:
+        row = QFrame()
+        row.setObjectName("moduleCard")
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(14, 10, 12, 10)
+        info = QVBoxLayout()
+        name = QLabel("OSCLinux")
+        name.setStyleSheet("font-size:15px;font-weight:700")
+        info.addWidget(name)
+        description = QLabel("Thème de base intégré. Il reste disponible même si tous les autres thèmes sont supprimés.")
+        description.setObjectName("muted")
+        description.setWordWrap(True)
+        info.addWidget(description)
+        info.addWidget(QLabel("Version 1.0.0 · Auteur : OSCLinux"))
+        row_layout.addLayout(info, 1)
+        self.base_theme_action = QPushButton("Utiliser")
+        self.base_theme_action.setFixedWidth(110)
+        self.base_theme_action.clicked.connect(lambda: self._use_theme(BASE_THEME_ID))
+        row_layout.addWidget(self.base_theme_action)
+        return row
 
     def _general_page(self) -> QWidget:
         page = QWidget()
@@ -734,14 +1030,14 @@ class MainWindow(QMainWindow):
         self.timeline_sources = ModuleSourceList()
         self.timeline_sources.setObjectName("timelineSources")
         self.timeline_sources.setGridSize(QSize(220, 125))
-        self.timeline_sources.setMinimumHeight(135)
-        self.timeline_sources.setMaximumHeight(270)
+        self.timeline_sources.setFixedHeight(150)
         self.timeline_sources.setViewMode(QListWidget.ViewMode.IconMode)
         self.timeline_sources.setFlow(QListWidget.Flow.LeftToRight)
-        self.timeline_sources.setWrapping(True)
+        self.timeline_sources.setWrapping(False)
         self.timeline_sources.setMovement(QListWidget.Movement.Static)
         self.timeline_sources.setDragEnabled(True)
-        self.timeline_sources.setMaximumHeight(105)
+        self.timeline_sources.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.timeline_sources.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         available_layout.addWidget(self.timeline_sources)
         layout.addWidget(available_panel)
 
@@ -751,7 +1047,12 @@ class MainWindow(QMainWindow):
         timeline_layout.addWidget(self._section_title("Séquence d’affichage", "La règle est graduée en secondes. Faites glisser les blocs pour changer leur ordre."))
         self.timeline_scroll = QScrollArea()
         self.timeline_scroll.setWidgetResizable(False)
+        self.timeline_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.timeline_scroll.setFixedHeight(140)
+        self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.timeline = TimelineWidget(self.settings.get("timeline") or [], {}, self)
+        self.timeline.setMaximumHeight(125)
         self.timeline_scroll.setWidget(self.timeline)
         timeline_layout.addWidget(self.timeline_scroll)
         layout.addWidget(timeline_panel)
@@ -760,19 +1061,58 @@ class MainWindow(QMainWindow):
         summary.setObjectName("panel")
         summary_layout = QVBoxLayout(summary)
         summary_layout.addWidget(self._section_title("Module sélectionné", "Résumé des informations et du contenu affiché dans la chatbox."))
+
+        summary_content = QHBoxLayout()
+        summary_content.setSpacing(20)
+        details = QWidget()
+        details_layout = QVBoxLayout(details)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setSpacing(12)
         self.timeline_summary_title = QLabel("Sélectionnez un module dans la règle.")
         self.timeline_summary_title.setStyleSheet("font-size:16px;font-weight:700")
         self.timeline_summary_meta = QLabel("")
         self.timeline_summary_meta.setObjectName("muted")
+        self.timeline_summary_meta.setWordWrap(True)
         self.timeline_summary_description = QLabel("")
         self.timeline_summary_description.setWordWrap(True)
         self.timeline_summary_preview = QLabel("")
         self.timeline_summary_preview.setWordWrap(True)
         self.timeline_summary_preview.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        summary_layout.addWidget(self.timeline_summary_title)
-        summary_layout.addWidget(self.timeline_summary_meta)
-        summary_layout.addWidget(self.timeline_summary_description)
-        summary_layout.addWidget(self.timeline_summary_preview)
+        details_layout.addWidget(self.timeline_summary_title)
+        details_layout.addWidget(self.timeline_summary_meta)
+        details_layout.addWidget(self.timeline_summary_description)
+        details_layout.addStretch(1)
+        summary_content.addWidget(details, 6)
+
+        preview_panel = QFrame()
+        preview_panel.setObjectName("vrchatPreview")
+        preview_panel.setMinimumSize(340, 185)
+        preview_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        preview_layout = QVBoxLayout(preview_panel)
+        preview_layout.setContentsMargins(16, 14, 16, 14)
+        preview_layout.setSpacing(10)
+        preview_header = QHBoxLayout()
+        preview_eyebrow = QLabel("APERÇU CHATBOX")
+        preview_eyebrow.setObjectName("previewEyebrow")
+        vrchat_label = QLabel("VRChat")
+        vrchat_label.setObjectName("muted")
+        preview_header.addWidget(preview_eyebrow)
+        preview_header.addStretch(1)
+        preview_header.addWidget(vrchat_label)
+        preview_layout.addLayout(preview_header)
+
+        bubble = QFrame()
+        bubble.setObjectName("vrchatBubble")
+        bubble_layout = QVBoxLayout(bubble)
+        bubble_layout.setContentsMargins(16, 13, 16, 13)
+        bubble_layout.addWidget(self.timeline_summary_preview)
+        preview_layout.addWidget(bubble, 1, Qt.AlignmentFlag.AlignVCenter)
+        preview_hint = QLabel("Rendu indicatif · le texte dépend des données du module")
+        preview_hint.setObjectName("previewHint")
+        preview_hint.setWordWrap(True)
+        preview_layout.addWidget(preview_hint)
+        summary_content.addWidget(preview_panel, 5)
+        summary_layout.addLayout(summary_content, 1)
         layout.addWidget(summary, 1)
 
         self.timeline.sequenceChanged.connect(self._timeline_changed)
@@ -842,7 +1182,7 @@ class MainWindow(QMainWindow):
         self.timeline_summary_meta.setText(f'Version {version} · Auteur : {entry.get("author", "—")} · {duration} · {status}')
         self.timeline_summary_description.setText(entry.get("description", "Description non disponible."))
         preview = self.providers.get(module_id, options, lambda: self.store.load_text(module_id, options))
-        self.timeline_summary_preview.setText(f"Affichage prévu : {preview}")
+        self.timeline_summary_preview.setText(preview or "Aucun contenu à afficher pour le moment.")
 
 
     def _journal_page(self) -> QWidget:
@@ -896,16 +1236,6 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(widget)
-        scroll.setStyleSheet(
-            "QScrollArea { background-color: #0d1425; border: 0; } "
-            "QScrollArea::viewport { background-color: #0d1425; }"
-        )
-        widget.setStyleSheet("background-color: #0d1425;")
-        scroll.viewport().setStyleSheet("background-color: #0d1425;")
-        palette = scroll.viewport().palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor("#0d1425"))
-        scroll.viewport().setPalette(palette)
-        scroll.viewport().setAutoFillBackground(True)
         return scroll
 
     def _fill_order_list(self) -> None:
@@ -950,9 +1280,6 @@ class MainWindow(QMainWindow):
             self.settings["osc"]["startup"] = self.general_autostart.isChecked()
         if hasattr(self, "order_list"):
             self.settings["order"] = [self.order_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.order_list.count())]
-        if hasattr(self, "theme_combo"):
-            self.settings["appearance"]["theme"] = "dark" if self.theme_combo.currentText() == "Sombre" else "light"
-
     def save_all(self) -> None:
         self._collect_settings()
         try:
@@ -987,11 +1314,41 @@ class MainWindow(QMainWindow):
         if not quiet:
             self._append_log("Démarrage automatique activé." if enabled else "Démarrage automatique désactivé.")
 
-    def _change_theme(self, theme: str) -> None:
-        # The dark palette follows the supplied concept; light mode is a softer neutral palette.
-        self.setStyleSheet(DARK_STYLE if theme == "Sombre" else DARK_STYLE.replace("#0d1425", "#e9eef7").replace("#0a1120", "#dfe6f1").replace("#111c31", "#f5f7fb").replace("#0c172a", "#ffffff").replace("#dce7ff", "#17243b").replace("#f2f6ff", "#101a30").replace("#ecf2ff", "#101a30").replace("#8fa6ce", "#526580").replace("#b4c5e7", "#263957"))
+    def _change_theme(self, theme_id: str) -> None:
+        if theme_id in {"dark", ""}:
+            theme_id = BASE_THEME_ID
+        colors: dict[str, str] = {}
+        if theme_id == BASE_THEME_ID:
+            stylesheet = DARK_STYLE
+        elif theme_id == "light":
+            installed = self.theme_store.installed_versions()
+            bundled_colors = self.theme_store.bundled_palette("light")
+            colors = self.theme_store.palette("light") if "light" in installed else bundled_colors
+            stylesheet = LIGHT_STYLE
+            stylesheet = _replace_style_colors(
+                stylesheet,
+                {bundled_colors[token]: replacement for token, replacement in colors.items() if token in bundled_colors},
+            )
+        else:
+            try:
+                colors = self.theme_store.palette(theme_id)
+                stylesheet = _replace_style_colors(DARK_STYLE, colors)
+            except ThemeStoreError as exc:
+                self._append_log(f"Thème {theme_id} invalide : {exc}")
+                theme_id = BASE_THEME_ID
+                self.settings["appearance"]["theme"] = BASE_THEME_ID
+                stylesheet = DARK_STYLE
+        self._light_theme = theme_id == "light"
+        self.setStyleSheet(stylesheet)
+        if hasattr(self, "timeline"):
+            self.timeline.set_theme_colors(colors)
+        if hasattr(self, "base_theme_action"):
+            active = self.settings["appearance"].get("theme", BASE_THEME_ID)
+            self.base_theme_action.setText("Thème actif" if active == BASE_THEME_ID else "Utiliser")
+            self.base_theme_action.setEnabled(active != BASE_THEME_ID)
 
     def refresh_preview(self) -> None:
+        muted_color = "#526580" if getattr(self, "_light_theme", False) else "#8fa6ce"
         if hasattr(self, "timeline") and self.timeline.selected_id:
             self._show_timeline_summary(self.timeline.selected_id)
         if self.last_heard and time.monotonic() - self.last_heard < 10:
@@ -999,7 +1356,7 @@ class MainWindow(QMainWindow):
             self.vrchat_state.setStyleSheet("color:#20d889")
         else:
             self.vrchat_state.setText("●  VRChat : non détecté")
-            self.vrchat_state.setStyleSheet("color:#8fa6ce")
+            self.vrchat_state.setStyleSheet(f"color:{muted_color}")
 
     def toggle_script(self) -> None:
         if self.running:
@@ -1010,7 +1367,8 @@ class MainWindow(QMainWindow):
                 self.listener = None
             self.run_button.setText("▶  Démarrer")
             self.script_state.setText("●  Script : arrêté")
-            self.script_state.setStyleSheet("color:#8fa6ce")
+            muted_color = "#526580" if getattr(self, "_light_theme", False) else "#8fa6ce"
+            self.script_state.setStyleSheet(f"color:{muted_color}")
             self._append_log("Script OSC arrêté.")
             return
         self.save_all()
