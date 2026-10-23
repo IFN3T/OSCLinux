@@ -30,7 +30,7 @@
     },
     {
       "id": "system",
-      "name": "CPU / RAM / GPU",
+      "name": "Indicateur de Performance",
       "description": "Affiche l’utilisation des ressources système.",
       "author": "OSCLinux",
       "version": "1.0.0",
