@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "modules": [
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "description": "Titre, artiste et progression de lecture.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "441b45f203f02cf9f89ce56b5d76bc60cece3fed6c2d53be497e2fd44d2c06f4",
+      "settings": [
+        {
+          "key": "format",
+          "label": "Format",
+          "type": "choice",
+          "choices": [
+            "Titre + Artiste + Progression",
+            "Titre + Artiste",
+            "Artiste + Titre"
+          ],
+          "default": "Titre + Artiste + Progression"
+        },
+        {
+          "key": "hide_paused",
+          "label": "Masquer pendant la pause",
+          "type": "boolean",
+          "default": true
+        }
+      ]
+    },
+    {
+      "id": "system",
+      "name": "CPU / RAM / GPU",
+      "description": "Affiche l’utilisation des ressources système.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "fbfdc817c1ae54cbdc56f0d283d52dbc09dabdd5f2556659450492d96e1679b8",
+      "settings": [
+        {
+          "key": "cpu",
+          "label": "CPU",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "ram",
+          "label": "RAM",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "gpu",
+          "label": "GPU NVIDIA",
+          "type": "boolean",
+          "default": true
+        }
+      ]
+    },
+    {
+      "id": "temperatures",
+      "name": "Températures",
+      "description": "Températures disponibles du processeur et du GPU.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "ab007e82d3430c7db8731d117c61a962f33afa017230f40beffc2d04c7b7edee",
+      "settings": [
+        {
+          "key": "cpu",
+          "label": "CPU",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "gpu",
+          "label": "GPU NVIDIA",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "other",
+          "label": "Autres capteurs",
+          "type": "boolean",
+          "default": false
+        }
+      ]
+    },
+    {
+      "id": "weather",
+      "name": "Météo",
+      "description": "Conditions météo actuelles pour une ville.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "c84ad320780c0b66d6d0241385c7cc44c1798bf44c8d46e4b65e511e4a68ebd4",
+      "settings": [
+        {
+          "key": "city",
+          "label": "Ville",
+          "type": "text",
+          "default": "Paris"
+        },
+        {
+          "key": "unit",
+          "label": "Unités",
+          "type": "choice",
+          "choices": [
+            "°C",
+            "°F"
+          ],
+          "default": "°C"
+        }
+      ]
+    },
+    {
+      "id": "clock",
+      "name": "Horloge",
+      "description": "Heure locale au format 12 h ou 24 h.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "283bcdefcdf5dca7c9ec68c7abf6695c00228860a04685d02c178320481d9848",
+      "settings": [
+        {
+          "key": "format",
+          "label": "Format horaire",
+          "type": "choice",
+          "choices": [
+            "24h",
+            "12h"
+          ],
+          "default": "24h"
+        }
+      ]
+    },
+    {
+      "id": "custom",
+      "name": "Personnalisé",
+      "description": "Texte libre avec les variables {time}, {date} et {city}.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "4b61b15394a45895e8fb3041ea0250735868ac60545b2e6e4768b2d915e157c4",
+      "settings": [
+        {
+          "key": "message",
+          "label": "Message",
+          "type": "text",
+          "default": "♫ Bonne journée !"
+        }
+      ]
+    }
+  ]
+}
