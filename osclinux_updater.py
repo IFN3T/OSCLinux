@@ -209,8 +209,14 @@ class ReleaseUpdater:
             for name in file_names:
                 if not isinstance(name, str) or not _ALLOWED_FILES.fullmatch(name):
                     raise ValueError("chemin de fichier invalide")
-                candidate = directory.joinpath(*PurePosixPath(name).parts)
-                if candidate.is_symlink() or not candidate.is_file() or candidate.resolve().parent != candidate.parent.resolve():
+                parts = PurePosixPath(name).parts
+                candidate = directory.joinpath(*parts)
+                parent = directory
+                for component in parts[:-1]:
+                    parent = parent / component
+                    if parent.is_symlink():
+                        raise ValueError("dossier temporaire contenant un lien symbolique")
+                if candidate.is_symlink() or not candidate.is_file() or directory not in candidate.resolve().parents:
                     raise ValueError("fichier temporaire absent ou lien symbolique")
                 files.append(candidate)
             staged = StagedUpdate(version, directory, tuple(files))
@@ -244,6 +250,7 @@ class ReleaseUpdater:
         return decoded
 
     def _download(self, url: str, destination: Path) -> None:
+        _check_final_url(url, allowed_hosts={"github.com", "www.github.com"})
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/octet-stream"})
         temp_path = destination.with_suffix(destination.suffix + ".part")
         total = 0
@@ -271,7 +278,17 @@ class ReleaseUpdater:
 
 def _check_final_url(url: str, *, allowed_hosts: set[str]) -> None:
     parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
+    try:
+        valid_port = parsed.port in (None, 443)
+    except ValueError:
+        valid_port = False
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in allowed_hosts
+        or parsed.username is not None
+        or parsed.password is not None
+        or not valid_port
+    ):
         raise UpdateError("Redirection vers une adresse non autorisée refusée.")
 
 
@@ -308,8 +325,15 @@ def _extract_application_zip(archive_path: Path, destination: Path) -> list[Path
                     raise UpdateError("L'archive décompressée dépasse la taille maximale autorisée.")
                 target = destination.joinpath(*posix.parts)
                 target.parent.mkdir(parents=True, exist_ok=True)
+                written = 0
                 with archive.open(info) as source, target.open("xb") as output:
-                    shutil.copyfileobj(source, output)
+                    while chunk := source.read(64 * 1024):
+                        written += len(chunk)
+                        if written > info.file_size or total_size - info.file_size + written > MAX_EXPANDED_BYTES:
+                            raise UpdateError("La taille réelle décompressée dépasse la limite autorisée.")
+                        output.write(chunk)
+                if written != info.file_size:
+                    raise UpdateError(f"Taille incohérente pour {raw_name!r}.")
                 extracted.append(target)
     except zipfile.BadZipFile as exc:
         raise UpdateError("Le fichier téléchargé n'est pas une archive ZIP valide.") from exc
