@@ -1,7 +1,6 @@
 # OSCLinux
 
-OSCLinux currently provides its Qt main window and the GitHub Releases updater.
-Spotify and VRChat OSC integrations will be added as optional modules.
+OSCLinux provides its Qt main window and built-in GitHub Releases updater.
 
 Use Python 3.10 or newer and a project-local virtual environment for all
 dependencies and commands:
