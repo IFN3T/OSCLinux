@@ -15,6 +15,7 @@ DEFAULTS: dict[str, Any] = {
     "appearance": {"theme": "dark"},
     "module_options": {},
     "order": [],
+    "timeline": None,
 }
 
 
