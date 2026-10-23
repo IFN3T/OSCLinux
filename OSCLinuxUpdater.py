@@ -96,7 +96,6 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             self._workers: dict[QThread, UpdateWorker] = {}
             self._check_active = False
             self._close_when_idle = False
-            self.program_process: QProcess | None = None
 
             title = QLabel(APP_NAME)
             title.setStyleSheet("font-size: 30px; font-weight: 700;")
@@ -129,41 +128,20 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             QTimer.singleShot(350, self.check_updates)
 
         def launch_program(self) -> None:
-            if self.program_process is not None and self.program_process.state() != QProcess.ProcessState.NotRunning:
-                self.status.setText("OSCLinux est déjà lancé.")
-                return
             program_path = INSTALL_DIR / "OSCLinux.py"
             if not program_path.is_file():
                 QMessageBox.critical(self, "Lancement impossible", f"Fichier introuvable : {program_path.name}")
                 return
-            process = QProcess(self)
-            process.setProgram(sys.executable)
-            process.setArguments([str(program_path)])
-            process.setWorkingDirectory(str(INSTALL_DIR))
-            process.started.connect(self._program_started)
-            process.finished.connect(self._program_finished)
-            process.errorOccurred.connect(self._program_error)
-            self.program_process = process
             self.launch_button.setEnabled(False)
             self.status.setText("Lancement d’OSCLinux…")
-            process.start()
-
-        def _program_started(self) -> None:
-            self.launch_button.setText("OSCLinux est lancé")
-            self.status.setText("Le programme principal OSCLinux est lancé.")
-
-        def _program_finished(self, *_args) -> None:
-            self.launch_button.setEnabled(True)
-            self.launch_button.setText("Lancer OSCLinux")
-            if not self._check_active:
-                self.status.setText("OSCLinux est fermé. Vous pouvez le relancer.")
-            self.program_process = None
-
-        def _program_error(self, _error) -> None:
-            self.launch_button.setEnabled(True)
-            self.launch_button.setText("Lancer OSCLinux")
-            self.status.setText("Impossible de lancer OSCLinux.")
-            self.program_process = None
+            started, _pid = QProcess.startDetached(sys.executable, [str(program_path)], str(INSTALL_DIR))
+            if started:
+                self.status.setText("OSCLinux est lancé.")
+                self.close()
+            else:
+                self.launch_button.setEnabled(True)
+                self.status.setText("Impossible de lancer OSCLinux.")
+                QMessageBox.critical(self, "Lancement impossible", "Le processus OSCLinux n’a pas pu démarrer.")
 
         def _start_worker(self, worker: UpdateWorker, success_handler) -> None:
             thread = QThread(self)
