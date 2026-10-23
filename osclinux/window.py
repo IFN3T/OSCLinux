@@ -554,7 +554,7 @@ class MainWindow(QMainWindow):
         form.addWidget(self._field("Intervalle global de mise à jour (secondes)", self.general_interval))
         self.general_mode_group = QButtonGroup(self)
         self.general_mode_radios = {}
-        for label, value in [("Un seul module", "single"), ("Alternance des modules", "alternate")]:
+        for label, value in [("Un seul module", "single"), ("Alternance des modules", "alternate"), ("Tous en même temps", "all")]:
             radio = QRadioButton(label)
             radio.setProperty("mode", value)
             self.general_mode_group.addButton(radio)
@@ -813,6 +813,13 @@ class MainWindow(QMainWindow):
                     interval = 1
                 else:
                     self._transmit(text, module_id)
+            elif mode == "all":
+                texts = [self._module_text(module_id) for module_id in active]
+                ready = [item for item in texts if item and item != "Chargement…"]
+                text = " · ".join(ready)
+                interval = 1 if not ready else int(self.settings["osc"].get("interval", 2))
+                if ready:
+                    self._transmit(text, "tous les modules")
             else:
                 self.active_index %= len(active)
                 module_id = active[self.active_index]
