@@ -3,11 +3,15 @@
 OSCLinux currently provides its Qt main window and the GitHub Releases updater.
 Spotify and VRChat OSC integrations will be added as optional modules.
 
-Install and launch the application with Python 3.10 or newer:
+Use Python 3.10 or newer and a project-local virtual environment for all
+dependencies and commands:
 
 ```sh
-python3 -m pip install -r requirements.txt
-python3 OSCLinux.py
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python OSCLinux.py
 ```
 
 The app checks for updates at startup without blocking the Qt interface. It
@@ -33,10 +37,11 @@ are never overwritten by this updater.
 The updater uses only the Python standard library; the main window uses PySide6.
 A network or GitHub error does not prevent the current version from starting.
 
-Run the updater regression checks with:
+Run the updater regression checks inside the same virtual environment with:
 
 ```sh
-python3 -m unittest discover -s tests -v
+source .venv/bin/activate
+python -m unittest discover -s tests -v
 ```
 
 ## Publishing a program update
