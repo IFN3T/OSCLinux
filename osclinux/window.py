@@ -6,6 +6,7 @@ import os
 import shlex
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,9 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -38,19 +42,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from osclinux.providers import ModuleDataProvider, WeatherProvider
+from osclinux.module_store import ModuleStore, ModuleStoreError
+from osclinux.providers import ModuleDataProvider
 from osclinux.settings import DEFAULTS, SETTINGS_PATH, load_settings, save_settings
 from osclinux.osc import OscClient, VRChatListener
 from osclinux.version import APP_NAME, APP_VERSION
-
-MODULES = [
-    ("spotify", "Spotify", "Titre, artiste et progression", "♫", "#1ed760"),
-    ("system", "CPU / RAM / GPU", "Utilisation des ressources système", "▦", "#13b8e8"),
-    ("temperatures", "Températures", "Températures du CPU et GPU", "♨", "#f04e89"),
-    ("weather", "Météo", "Météo locale ou ville choisie", "☀", "#f6b928"),
-    ("clock", "Horloge", "Heure et date", "◷", "#615cff"),
-    ("custom", "Personnalisé", "Texte libre ou variables", "</>", "#368de7"),
-]
 
 DARK_STYLE = """
 QMainWindow { background: #0d1425; color: #dce7ff; font-family: 'Noto Sans', 'DejaVu Sans', sans-serif; font-size: 13px; }
@@ -68,6 +64,10 @@ QPushButton:hover { background: #263a60; border-color: #587df7; }
 QPushButton#primary { background: #334ff0; border: 1px solid #536bff; font-weight: 700; }
 QPushButton#primary:hover { background: #4560ff; }
 QPushButton#danger { color: #ff9eae; }
+QPushButton#storeAdd { background: #16834f; border-color: #22b970; color: white; font-size: 22px; font-weight: 700; }
+QPushButton#storeAdd:hover { background: #1ba862; }
+QPushButton#storeRemove { background: #3a2033; color: #ff9eae; font-size: 22px; font-weight: 700; }
+QPushButton#storeUpdate { background: #20365d; color: #8fb4ff; font-size: 20px; font-weight: 700; }
 QPushButton#nav { text-align: left; padding: 12px 14px; background: transparent; border: 0; color: #b4c5e7; }
 QPushButton#nav:checked { background: #344ff0; color: white; font-weight: 700; }
 QPushButton#nav:hover:!checked { background: #15233c; }
@@ -95,12 +95,15 @@ class StatusBridge(QObject):
     packet = Signal(float)
 
 
+class StoreBridge(QObject):
+    completed = Signal(str, object, str)
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.settings = load_settings()
-        self.weather = WeatherProvider()
-        self.providers = ModuleDataProvider(self.weather)
+        self.providers = ModuleDataProvider()
         self.osc = OscClient()
         self.listener: VRChatListener | None = None
         self.bridge = StatusBridge()
@@ -109,7 +112,15 @@ class MainWindow(QMainWindow):
         self.active_index = 0
         self.last_heard = 0.0
         self.log_lines: list[str] = []
-        self.module_controls: dict[str, dict[str, QWidget]] = {}
+        self.settings.setdefault("module_options", {})
+        self.settings.setdefault("order", [])
+        self.store = ModuleStore()
+        self.catalog: list[dict] = []
+        self._catalog_by_id: dict[str, dict] = {}
+        self._pending_modules: set[str] = set()
+        self.store_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="osclinux-store")
+        self.store_bridge = StoreBridge()
+        self.store_bridge.completed.connect(self._store_completed)
         self.nav_buttons: list[QPushButton] = []
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.setMinimumSize(1120, 740)
@@ -123,7 +134,8 @@ class MainWindow(QMainWindow):
         self.cycle_timer.timeout.connect(self._send_next)
         self._build_ui()
         self.refresh_preview()
-        self._append_log("OSCLinux est prêt.")
+        self._append_log("OSCLinux est prêt. Aucun module n’est installé par défaut.")
+        QTimer.singleShot(100, self.refresh_catalog)
         if self.settings["osc"].get("startup"):
             self._set_autostart(True, quiet=True)
 
@@ -202,18 +214,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self._journal_page())
         main_v.addWidget(self.pages, 1)
         self.statusBar().showMessage(f"Configuration : {SETTINGS_PATH}")
-        self.host_edit.textChanged.connect(self.host_edit_osc.setText)
-        self.host_edit_osc.textChanged.connect(self.host_edit.setText)
-        self.port_spin.valueChanged.connect(self.port_osc.setValue)
-        self.port_osc.valueChanged.connect(self.port_spin.setValue)
-        self.interval_spin.valueChanged.connect(self.general_interval.setValue)
-        self.general_interval.valueChanged.connect(self.interval_spin.setValue)
-        for mode, first in (("single", self.single_radio), ("alternate", self.alternate_radio), ("all", self.simultaneous_radio)):
-            second = self.general_mode_radios[mode]
-            first.toggled.connect(lambda checked, target=second: target.setChecked(True) if checked else None)
-            second.toggled.connect(lambda checked, target=first: target.setChecked(True) if checked else None)
-        self.autostart_check.toggled.connect(self.general_autostart.setChecked)
-        self.general_autostart.toggled.connect(self.autostart_check.setChecked)
+
 
         footer = QFrame()
         footer.setObjectName("topbar")
@@ -251,171 +252,234 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(18, 16, 18, 14)
         outer.setSpacing(12)
         header = QHBoxLayout()
-        header.addLayout(self._page_header("Modules", "Activez et personnalisez les informations à afficher dans la chatbox VRChat."), 1)
+        header.addLayout(self._page_header("Modules", "Catalogue des modules disponibles. Installez uniquement ceux dont vous avez besoin."), 1)
+        self.refresh_catalog_button = QPushButton("↻  Actualiser le catalogue")
+        self.refresh_catalog_button.clicked.connect(self.refresh_catalog)
+        header.addWidget(self.refresh_catalog_button, 0, Qt.AlignmentFlag.AlignTop)
         outer.addLayout(header)
-
-        upper = QHBoxLayout()
-        upper.setSpacing(14)
-        modules_panel = QFrame()
-        modules_panel.setObjectName("panel")
-        module_layout = QVBoxLayout(modules_panel)
-        module_layout.setContentsMargins(12, 12, 12, 12)
-        grid = QGridLayout()
-        grid.setSpacing(10)
-        for index, entry in enumerate(MODULES):
-            grid.addWidget(self._module_card(*entry), index // 3, index % 3)
-        module_layout.addLayout(grid)
-        upper.addWidget(modules_panel, 7)
-
-        preview = QFrame()
-        preview.setObjectName("panel")
-        preview_layout = QVBoxLayout(preview)
-        preview_layout.addWidget(self._section_title("Aperçu de la chatbox", "Exemple des informations envoyées à VRChat."))
-        self.preview_cards: dict[str, QLabel] = {}
-        for key, name, _subtitle, icon, color in MODULES[:4]:
-            card = QFrame()
-            card.setObjectName("moduleCard")
-            row = QHBoxLayout(card)
-            icon_label = QLabel(icon)
-            icon_label.setStyleSheet(f"font-size:20px;color:{color};min-width:32px")
-            content = QVBoxLayout()
-            name_label = QLabel(name)
-            name_label.setStyleSheet("font-weight:700")
-            preview_text = QLabel("En attente…")
-            preview_text.setObjectName("muted")
-            preview_text.setWordWrap(True)
-            content.addWidget(name_label)
-            content.addWidget(preview_text)
-            row.addWidget(icon_label)
-            row.addLayout(content, 1)
-            preview_layout.addWidget(card)
-            self.preview_cards[key] = preview_text
-        preview_layout.addStretch(1)
-        preview_note = QLabel("L’affichage réel dépend des modules actifs et de l’ordre défini.")
-        preview_note.setObjectName("muted")
-        preview_note.setWordWrap(True)
-        preview_layout.addWidget(preview_note)
-        upper.addWidget(preview, 3)
-        outer.addLayout(upper, 6)
-
-        lower = QHBoxLayout()
-        order_panel = QFrame()
-        order_panel.setObjectName("panel")
-        order = QVBoxLayout(order_panel)
-        order.addWidget(self._section_title("Ordre d’affichage", "Définissez l’ordre des modules dans l’alternance."))
-        self.order_list = QListWidget()
-        self.order_list.setMaximumHeight(150)
-        self._fill_order_list()
-        order.addWidget(self.order_list)
-        order_controls = QHBoxLayout()
-        self.order_up = QPushButton("↑ Monter")
-        self.order_down = QPushButton("↓ Descendre")
-        self.order_up.clicked.connect(lambda: self._move_order(-1))
-        self.order_down.clicked.connect(lambda: self._move_order(1))
-        order_controls.addWidget(self.order_up)
-        order_controls.addWidget(self.order_down)
-        order.addLayout(order_controls)
-        lower.addWidget(order_panel, 5)
-
-        settings_panel = QFrame()
-        settings_panel.setObjectName("panel")
-        settings_layout = QVBoxLayout(settings_panel)
-        settings_layout.addWidget(self._section_title("Paramètres généraux", "Configuration du script et de la communication OSC."))
-        row = QHBoxLayout()
-        self.host_edit = QLineEdit(str(self.settings["osc"].get("host", "127.0.0.1")))
-        self.host_edit.setPlaceholderText("127.0.0.1")
-        self.port_spin = self._spin(self.settings["osc"].get("port", 9000), 1, 65535, "")
-        self.interval_spin = self._spin(self.settings["osc"].get("interval", 2), 1, 60)
-        row.addWidget(self._field("Adresse OSC (VRChat)", self.host_edit))
-        row.addWidget(self._field("Port", self.port_spin))
-        row.addWidget(self._field("Intervalle", self.interval_spin))
-        settings_layout.addLayout(row)
-        mode_row = QHBoxLayout()
-        self.single_radio = QRadioButton("Un seul module")
-        self.alternate_radio = QRadioButton("Alternance des modules")
-        self.simultaneous_radio = QRadioButton("Tous en même temps")
-        self.mode_group = QButtonGroup(self)
-        for radio, mode in [(self.single_radio, "single"), (self.alternate_radio, "alternate"), (self.simultaneous_radio, "all")]:
-            self.mode_group.addButton(radio)
-            radio.setProperty("mode", mode)
-            mode_row.addWidget(radio)
-        mode = self.settings["osc"].get("mode", "alternate")
-        {"single": self.single_radio, "alternate": self.alternate_radio, "all": self.simultaneous_radio}.get(mode, self.alternate_radio).setChecked(True)
-        settings_layout.addLayout(mode_row)
-        self.autostart_check = QCheckBox("Lancer OSCLinux au démarrage de session")
-        self.autostart_check.setChecked(bool(self.settings["osc"].get("startup", False)))
-        settings_layout.addWidget(self.autostart_check)
-        lower.addWidget(settings_panel, 6)
-        outer.addLayout(lower, 4)
+        self.catalog_status = QLabel("Chargement du catalogue…")
+        self.catalog_status.setObjectName("muted")
+        outer.addWidget(self.catalog_status)
+        self.catalog_panel = QFrame()
+        self.catalog_panel.setObjectName("panel")
+        self.catalog_layout = QVBoxLayout(self.catalog_panel)
+        self.catalog_layout.setContentsMargins(12, 12, 12, 12)
+        self.catalog_layout.setSpacing(8)
+        outer.addWidget(self.catalog_panel, 1)
         return self._scroll(page)
 
-    def _module_card(self, key: str, name: str, description: str, icon: str, color: str) -> QFrame:
-        card = QFrame()
-        card.setObjectName("moduleCard")
-        card.setProperty("moduleEnabled", bool(self.settings["modules"][key].get("enabled", False)))
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(7)
-        top = QHBoxLayout()
-        icon_label = QLabel(icon)
-        icon_label.setObjectName("icon")
-        icon_label.setStyleSheet(f"color:{color};min-width:32px;max-width:32px;min-height:32px;max-height:32px")
-        labels = QVBoxLayout()
-        module_title = QLabel(name)
-        module_title.setStyleSheet("font-weight:700;font-size:14px")
-        desc = QLabel(description)
-        desc.setObjectName("muted")
-        desc.setWordWrap(True)
-        labels.addWidget(module_title)
-        labels.addWidget(desc)
-        enabled = QCheckBox("Actif")
-        enabled.setChecked(bool(self.settings["modules"][key].get("enabled", False)))
-        enabled.toggled.connect(lambda value, k=key, c=card: self._module_enabled(k, c, value))
-        top.addWidget(icon_label)
-        top.addLayout(labels, 1)
-        top.addWidget(enabled)
-        layout.addLayout(top)
-        interval = self._spin(self.settings["modules"][key].get("interval", 10), 2, 120)
-        self.module_controls[key] = {"enabled": enabled, "interval": interval}
-        layout.addWidget(self._field("Temps d’affichage", self._combo_spin(interval)))
-        if key == "spotify":
-            formatting = QComboBox()
-            formatting.addItems(["Titre + Artiste + Progression", "Titre + Artiste", "Artiste + Titre"])
-            formatting.setCurrentText(self.settings["modules"][key].get("format", "Titre + Artiste + Progression"))
-            hide = QCheckBox("Masquer si pause")
-            hide.setChecked(bool(self.settings["modules"][key].get("hide_paused", True)))
-            layout.addWidget(self._field("Format", formatting))
-            layout.addWidget(hide)
-            self.module_controls[key].update(format=formatting, hide_paused=hide)
-        elif key in ("system", "temperatures"):
-            checks = QHBoxLayout()
-            fields = ("cpu", "ram", "gpu") if key == "system" else ("cpu", "gpu", "other")
-            for field in fields:
-                check = QCheckBox(field.upper() if field != "other" else "Autres")
-                check.setChecked(bool(self.settings["modules"][key].get(field, field != "other")))
-                checks.addWidget(check)
-                self.module_controls[key][field] = check
-            layout.addWidget(QLabel("Éléments à afficher"))
-            layout.addLayout(checks)
-        elif key == "weather":
-            city = QLineEdit(str(self.settings["modules"][key].get("city", "Paris")))
-            unit = QComboBox()
-            unit.addItems(["°C", "°F"])
-            unit.setCurrentText(str(self.settings["modules"][key].get("unit", "°C")))
-            layout.addWidget(self._field("Ville", city))
-            layout.addWidget(self._field("Unités", unit))
-            self.module_controls[key].update(city=city, unit=unit)
-        elif key == "clock":
-            clock_format = QComboBox()
-            clock_format.addItems(["24h", "12h"])
-            clock_format.setCurrentText(self.settings["modules"][key].get("format", "24h"))
-            layout.addWidget(self._field("Format", clock_format))
-            self.module_controls[key]["format"] = clock_format
-        elif key == "custom":
-            message = QLineEdit(str(self.settings["modules"][key].get("message", "♫ Bonne journée !")))
-            layout.addWidget(self._field("Message", message))
-            self.module_controls[key]["message"] = message
-        return card
+    def refresh_catalog(self) -> None:
+        if not hasattr(self, "refresh_catalog_button"):
+            return
+        self.refresh_catalog_button.setEnabled(False)
+        self.catalog_status.setText("Récupération du catalogue des modules…")
+        future = self.store_executor.submit(self.store.fetch_catalog)
+        def completed(result) -> None:
+            try:
+                catalog, online = result.result()
+                self.store_bridge.completed.emit("catalog", (catalog, online), "")
+            except Exception as exc:
+                self.store_bridge.completed.emit("catalog", None, str(exc))
+        future.add_done_callback(completed)
+
+    def _render_catalog(self) -> None:
+        while self.catalog_layout.count():
+            item = self.catalog_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        installed = self.store.installed_versions()
+        if not self.catalog:
+            empty = QLabel("Aucun module disponible dans le catalogue.")
+            empty.setObjectName("muted")
+            self.catalog_layout.addWidget(empty)
+        for entry in self.catalog:
+            module_id = entry["id"]
+            row = QFrame()
+            row.setObjectName("moduleCard")
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(14, 10, 12, 10)
+            row_layout.setSpacing(14)
+            info = QVBoxLayout()
+            name = QLabel(entry["name"])
+            name.setStyleSheet("font-size:15px;font-weight:700")
+            description = QLabel(entry["description"])
+            description.setObjectName("muted")
+            description.setWordWrap(True)
+            metadata = QLabel(f"Version {entry['version']}  ·  Auteur : {entry['author']}")
+            metadata.setObjectName("muted")
+            info.addWidget(name)
+            info.addWidget(description)
+            info.addWidget(metadata)
+            row_layout.addLayout(info, 1)
+            installed_version = installed.get(module_id)
+            is_installed = installed_version is not None
+            if module_id in self._pending_modules:
+                pending = QPushButton("…")
+                pending.setEnabled(False)
+                row_layout.addWidget(pending)
+            elif not is_installed:
+                add = QPushButton("＋")
+                add.setObjectName("storeAdd")
+                add.setToolTip("Installer ce module")
+                add.setFixedSize(42, 40)
+                add.clicked.connect(lambda _checked=False, mid=module_id: self._store_action("install", mid))
+                row_layout.addWidget(add)
+            else:
+                remove = QPushButton("×")
+                remove.setObjectName("storeRemove")
+                remove.setToolTip("Désinstaller ce module")
+                remove.setFixedSize(42, 40)
+                remove.clicked.connect(lambda _checked=False, mid=module_id: self._store_action("uninstall", mid))
+                manage = QPushButton("⚙")
+                manage.setToolTip("Gérer les paramètres du module")
+                manage.setFixedSize(42, 40)
+                manage.clicked.connect(lambda _checked=False, item=entry: self._manage_module(item))
+                row_layout.addWidget(remove)
+                row_layout.addWidget(manage)
+                if self._version_newer(entry["version"], installed_version):
+                    update = QPushButton("⬆")
+                    update.setObjectName("storeUpdate")
+                    update.setToolTip(f"Mettre à jour depuis {installed_version}")
+                    update.setFixedSize(42, 40)
+                    update.clicked.connect(lambda _checked=False, mid=module_id: self._store_action("update", mid))
+                    row_layout.addWidget(update)
+                else:
+                    current = QLabel("Installé")
+                    current.setStyleSheet("color:#20d889;font-weight:700")
+                    row_layout.addWidget(current)
+            self.catalog_layout.addWidget(row)
+        self.catalog_layout.addStretch(1)
+        self._fill_order_list()
+
+    def _store_action(self, operation: str, module_id: str) -> None:
+        if module_id in self._pending_modules:
+            return
+        if operation == "uninstall":
+            answer = QMessageBox.question(self, "Désinstaller le module", f"Retirer « {self._catalog_by_id[module_id]['name']} » ?")
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self._pending_modules.add(module_id)
+        self._render_catalog()
+        entry = self._catalog_by_id[module_id]
+        future = self.store_executor.submit(self._perform_store_action, operation, entry)
+        def completed(result) -> None:
+            try:
+                result.result()
+                self.store_bridge.completed.emit(f"{operation}:{module_id}", True, "")
+            except Exception as exc:
+                self.store_bridge.completed.emit(f"{operation}:{module_id}", None, str(exc))
+        future.add_done_callback(completed)
+
+    def _perform_store_action(self, operation: str, entry: dict) -> None:
+        if operation == "install":
+            self.store.install(entry)
+        elif operation == "update":
+            self.store.update(entry)
+        elif operation == "uninstall":
+            self.store.uninstall(entry["id"])
+        else:
+            raise ModuleStoreError("Action de module inconnue.")
+
+    def _store_completed(self, operation: str, result: object, error: str) -> None:
+        if operation == "catalog":
+            self.refresh_catalog_button.setEnabled(True)
+            if error:
+                self.catalog_status.setText(f"Catalogue indisponible : {error}")
+                self._append_log(f"Catalogue de modules indisponible : {error}")
+                return
+            self.catalog, online = result
+            self._catalog_by_id = {entry["id"]: entry for entry in self.catalog}
+            source = "en ligne" if online else "local (hors connexion)"
+            self.catalog_status.setText(f"{len(self.catalog)} modules disponibles · catalogue {source} · aucun module préinstallé")
+            self._render_catalog()
+            self._append_log(f"Catalogue chargé ({source}, {len(self.catalog)} modules).")
+            return
+        action, module_id = operation.split(":", 1)
+        self._pending_modules.discard(module_id)
+        if error:
+            self.catalog_status.setText(f"Action impossible pour {module_id} : {error}")
+            self._append_log(f"Erreur {action} {module_id} : {error}")
+            self._render_catalog()
+            return
+        if action == "install":
+            entry = self._catalog_by_id[module_id]
+            options = {setting["key"]: setting.get("default", "") for setting in entry.get("settings", [])}
+            options.update({"enabled": True, "interval": 10})
+            self.settings["module_options"][module_id] = options
+            self.settings.setdefault("order", []).append(module_id)
+            self._append_log(f"Module {entry['name']} installé ({entry['version']}).")
+        elif action == "uninstall":
+            self.settings["module_options"].pop(module_id, None)
+            self.settings["order"] = [item for item in self.settings.get("order", []) if item != module_id]
+            self._append_log(f"Module {self._catalog_by_id[module_id]['name']} désinstallé.")
+        elif action == "update":
+            self._append_log(f"Module {self._catalog_by_id[module_id]['name']} mis à jour.")
+        self._fill_order_list()
+        self.save_all()
+        self._render_catalog()
+
+    def _manage_module(self, entry: dict) -> None:
+        module_id = entry["id"]
+        options = dict(self.settings["module_options"].get(module_id, {}))
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Paramètres · {entry['name']}")
+        dialog.setMinimumWidth(420)
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        enabled = QCheckBox("Module actif dans l’alternance")
+        enabled.setChecked(bool(options.get("enabled", False)))
+        interval = self._spin(options.get("interval", 10), 2, 120)
+        form.addRow("État", enabled)
+        form.addRow("Durée d’affichage", interval)
+        controls: dict[str, QWidget] = {}
+        for setting in entry.get("settings", []):
+            key = setting["key"]
+            kind = setting["type"]
+            value = options.get(key, setting.get("default", ""))
+            if kind == "boolean":
+                control = QCheckBox()
+                control.setChecked(bool(value))
+            elif kind == "choice":
+                control = QComboBox()
+                control.addItems([str(choice) for choice in setting["choices"]])
+                control.setCurrentText(str(value))
+            elif kind == "number":
+                control = self._spin(int(value), int(setting.get("min", 0)), int(setting.get("max", 100)))
+            else:
+                control = QLineEdit(str(value))
+            controls[key] = control
+            form.addRow(setting["label"], control)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        options["enabled"] = enabled.isChecked()
+        options["interval"] = interval.value()
+        for key, control in controls.items():
+            if isinstance(control, QCheckBox):
+                options[key] = control.isChecked()
+            elif isinstance(control, QComboBox):
+                options[key] = control.currentText()
+            elif isinstance(control, QSpinBox):
+                options[key] = control.value()
+            elif isinstance(control, QLineEdit):
+                options[key] = control.text()
+        self.settings["module_options"][module_id] = options
+        self.save_all()
+        self._append_log(f"Paramètres du module {entry['name']} enregistrés.")
+
+    @staticmethod
+    def _version_newer(candidate: str, current: str) -> bool:
+        def parts(value: str) -> tuple[int, ...]:
+            try:
+                return tuple(int(part) for part in value.removeprefix("v").split("."))
+            except ValueError:
+                return (0,)
+        return parts(candidate) > parts(current)
 
     def _osc_page(self) -> QWidget:
         page = QWidget()
@@ -482,6 +546,22 @@ class MainWindow(QMainWindow):
         self.general_autostart.setChecked(bool(self.settings["osc"].get("startup", False)))
         form.addWidget(self.general_autostart)
         layout.addWidget(panel)
+        order_panel = QFrame()
+        order_panel.setObjectName("panel")
+        order_layout = QVBoxLayout(order_panel)
+        order_layout.addWidget(self._section_title("Ordre des modules installés", "Utilisé par le mode d’alternance."))
+        self.order_list = QListWidget()
+        self.order_list.setMaximumHeight(220)
+        order_layout.addWidget(self.order_list)
+        order_buttons = QHBoxLayout()
+        self.order_up = QPushButton("↑ Monter")
+        self.order_down = QPushButton("↓ Descendre")
+        self.order_up.clicked.connect(lambda: self._move_order(-1))
+        self.order_down.clicked.connect(lambda: self._move_order(1))
+        order_buttons.addWidget(self.order_up)
+        order_buttons.addWidget(self.order_down)
+        order_layout.addLayout(order_buttons)
+        layout.addWidget(order_panel)
         layout.addStretch(1)
         return page
 
@@ -549,15 +629,20 @@ class MainWindow(QMainWindow):
         return scroll
 
     def _fill_order_list(self) -> None:
+        if not hasattr(self, "order_list"):
+            return
         self.order_list.clear()
-        order = self.settings.get("order", [entry[0] for entry in MODULES])
-        by_key = {entry[0]: entry for entry in MODULES}
-        for key in order:
-            if key in by_key:
-                entry = by_key[key]
-                item = QListWidgetItem(f"{entry[3]}   {entry[1]}   ·   {self.settings['modules'][key].get('interval', 10)} s")
-                item.setData(Qt.ItemDataRole.UserRole, key)
-                self.order_list.addItem(item)
+        installed = self.store.installed_versions()
+        order = self.settings.get("order", [])
+        ordered = [module_id for module_id in order if module_id in installed]
+        ordered.extend(module_id for module_id in installed if module_id not in ordered)
+        for module_id in ordered:
+            entry = self._catalog_by_id.get(module_id, {})
+            name = entry.get("name", module_id)
+            item = QListWidgetItem(f"{name}  ·  {installed[module_id]}")
+            item.setData(Qt.ItemDataRole.UserRole, module_id)
+            self.order_list.addItem(item)
+        self.settings["order"] = ordered
 
     def _move_order(self, delta: int) -> None:
         index = self.order_list.currentRow()
@@ -567,28 +652,11 @@ class MainWindow(QMainWindow):
         item = self.order_list.takeItem(index)
         self.order_list.insertItem(target, item)
         self.order_list.setCurrentRow(target)
+        if hasattr(self, "order_list"):
+            self.settings["order"] = [self.order_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.order_list.count())]
         self._append_log("Ordre des modules modifié.")
 
-    def _module_enabled(self, key: str, card: QFrame, enabled: bool) -> None:
-        card.setProperty("moduleEnabled", enabled)
-        card.style().unpolish(card)
-        card.style().polish(card)
-        self.settings["modules"][key]["enabled"] = enabled
-
     def _collect_settings(self) -> None:
-        modules = self.settings["modules"]
-        for key, controls in self.module_controls.items():
-            modules[key]["enabled"] = controls["enabled"].isChecked()
-            modules[key]["interval"] = controls["interval"].value()
-            for field, widget in controls.items():
-                if field in ("enabled", "interval"):
-                    continue
-                if isinstance(widget, QCheckBox):
-                    modules[key][field] = widget.isChecked()
-                elif isinstance(widget, QComboBox):
-                    modules[key][field] = widget.currentText()
-                elif isinstance(widget, QLineEdit):
-                    modules[key][field] = widget.text()
         host = getattr(self, "host_edit", None)
         port = getattr(self, "port_spin", None)
         if host:
@@ -613,7 +681,8 @@ class MainWindow(QMainWindow):
             self.settings["osc"]["startup"] = startup.isChecked()
         if hasattr(self, "general_autostart"):
             self.settings["osc"]["startup"] = self.general_autostart.isChecked()
-        self.settings["order"] = [self.order_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.order_list.count())]
+        if hasattr(self, "order_list"):
+            self.settings["order"] = [self.order_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.order_list.count())]
         if hasattr(self, "theme_combo"):
             self.settings["appearance"]["theme"] = "dark" if self.theme_combo.currentText() == "Sombre" else "light"
 
@@ -656,34 +725,12 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(DARK_STYLE if theme == "Sombre" else DARK_STYLE.replace("#0d1425", "#e9eef7").replace("#0a1120", "#dfe6f1").replace("#111c31", "#f5f7fb").replace("#0c172a", "#ffffff").replace("#dce7ff", "#17243b").replace("#f2f6ff", "#101a30").replace("#ecf2ff", "#101a30").replace("#8fa6ce", "#526580").replace("#b4c5e7", "#263957"))
 
     def refresh_preview(self) -> None:
-        for key, label in self.preview_cards.items():
-            options = self.settings["modules"].get(key, {})
-            if key in self.module_controls:
-                options = self._options_for(key)
-            try:
-                label.setText(self.providers.get(key, options) or "En pause")
-            except Exception as exc:
-                label.setText(f"Indisponible : {exc}")
         if self.last_heard and time.monotonic() - self.last_heard < 10:
             self.vrchat_state.setText("●  VRChat : détecté")
             self.vrchat_state.setStyleSheet("color:#20d889")
         else:
             self.vrchat_state.setText("●  VRChat : non détecté")
             self.vrchat_state.setStyleSheet("color:#8fa6ce")
-
-    def _options_for(self, key: str) -> dict:
-        options = dict(self.settings["modules"].get(key, {}))
-        controls = self.module_controls.get(key, {})
-        for field, widget in controls.items():
-            if field in ("enabled", "interval"):
-                continue
-            if isinstance(widget, QCheckBox):
-                options[field] = widget.isChecked()
-            elif isinstance(widget, QComboBox):
-                options[field] = widget.currentText()
-            elif isinstance(widget, QLineEdit):
-                options[field] = widget.text()
-        return options
 
     def toggle_script(self) -> None:
         if self.running:
@@ -719,9 +766,15 @@ class MainWindow(QMainWindow):
         self._send_next()
 
     def _active_modules(self) -> list[str]:
-        self._collect_settings()
-        order = self.settings.get("order", [entry[0] for entry in MODULES])
-        return [key for key in order if self.settings["modules"].get(key, {}).get("enabled")]
+        installed = self.store.installed_versions()
+        options = self.settings.get("module_options", {})
+        ordered = [module_id for module_id in self.settings.get("order", []) if module_id in installed]
+        ordered.extend(module_id for module_id in installed if module_id not in ordered)
+        return [module_id for module_id in ordered if options.get(module_id, {}).get("enabled", False)]
+
+    def _module_text(self, module_id: str) -> str:
+        options = self.settings.get("module_options", {}).get(module_id, {})
+        return self.providers.get(module_id, options, lambda: self.store.load_text(module_id, options))
 
     def _send_next(self) -> None:
         if not self.running:
@@ -731,23 +784,36 @@ class MainWindow(QMainWindow):
             self.toggle_script()
             return
         mode = self.settings["osc"].get("mode", "alternate")
-        if mode == "single":
-            key = active[0]
-            text = self.providers.get(key, self._options_for(key))
-            interval = int(self.settings["modules"][key].get("interval", 10))
-            self._transmit(text, key)
-        elif mode == "all":
-            texts = [self.providers.get(key, self._options_for(key)) for key in active]
-            text = " · ".join(item for item in texts if item)
+        options = self.settings.get("module_options", {})
+        try:
+            if mode == "single":
+                module_id = active[0]
+                text = self._module_text(module_id)
+                interval = int(options.get(module_id, {}).get("interval", 10))
+                if text == "Chargement…":
+                    interval = 1
+                else:
+                    self._transmit(text, module_id)
+            elif mode == "all":
+                texts = [self._module_text(module_id) for module_id in active]
+                ready = [item for item in texts if item and item != "Chargement…"]
+                text = " · ".join(ready)
+                interval = 1 if not ready else int(self.settings["osc"].get("interval", 2))
+                if ready:
+                    self._transmit(text, "tous les modules")
+            else:
+                self.active_index %= len(active)
+                module_id = active[self.active_index]
+                self.active_index = (self.active_index + 1) % len(active)
+                text = self._module_text(module_id)
+                interval = int(options.get(module_id, {}).get("interval", 10))
+                if text == "Chargement…":
+                    interval = 1
+                else:
+                    self._transmit(text, module_id)
+        except Exception as exc:
+            self._append_log(f"Erreur module : {exc}")
             interval = int(self.settings["osc"].get("interval", 2))
-            self._transmit(text, "tous les modules")
-        else:
-            self.active_index %= len(active)
-            key = active[self.active_index]
-            self.active_index = (self.active_index + 1) % len(active)
-            text = self.providers.get(key, self._options_for(key))
-            interval = int(self.settings["modules"][key].get("interval", 10))
-            self._transmit(text, key)
         self.cycle_timer.start(max(1, interval) * 1000)
 
     def _transmit(self, text: str, key: str) -> None:
@@ -777,9 +843,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "log_view"):
             self.log_view.append(line)
 
-    @staticmethod
-    def _module_name(key: str) -> str:
-        return next((entry[1] for entry in MODULES if entry[0] == key), key)
+    def _module_name(self, key: str) -> str:
+        return self._catalog_by_id.get(key, {}).get("name", key)
 
     def closeEvent(self, event) -> None:
         if self.running:
@@ -787,7 +852,7 @@ class MainWindow(QMainWindow):
             if self.listener:
                 self.listener.stop()
         self.save_all()
+        self.store_executor.shutdown(wait=False, cancel_futures=True)
         self.providers.close()
-        self.weather.close()
         self.osc.close()
         event.accept()
