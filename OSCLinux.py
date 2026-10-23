@@ -96,13 +96,12 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
             self.setMinimumSize(520, 280)
             self._threads: list[QThread] = []
+            self._workers: dict[QThread, UpdateWorker] = {}
+            self._check_active = False
 
             title = QLabel("OSCLinux")
-            title.setStyleSheet("font-size: 24px; font-weight: 600;")
-            description = QLabel(
-                "Programme principal prêt. Les connexions Spotify et VRChat OSC "
-                "seront ajoutées sous forme de modules."
-            )
+            title.setStyleSheet("font-size: 28px; font-weight: 700;")
+            description = QLabel("Application principale pour gérer les services et les paramètres d’OSCLinux.")
             description.setWordWrap(True)
             self.status = QLabel("Vérification des mises à jour au démarrage…")
             self.status.setWordWrap(True)
@@ -138,19 +137,24 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             thread.finished.connect(thread.deleteLater)
             thread.finished.connect(lambda: self._discard_thread(thread))
             self._threads.append(thread)
+            self._workers[thread] = worker
             thread.start()
 
         def _discard_thread(self, thread: QThread) -> None:
             if thread in self._threads:
                 self._threads.remove(thread)
+            self._workers.pop(thread, None)
 
         def check_updates(self) -> None:
-            self.check_button.setEnabled(False)
+            if self._check_active:
+                self.status.setText("La vérification des mises à jour est déjà en cours…")
+                return
+            self._check_active = True
             self.status.setText("Vérification de la dernière release stable…")
             self._start_worker(UpdateWorker("check"), self._check_finished)
 
         def _check_finished(self, result: object) -> None:
-            self.check_button.setEnabled(True)
+            self._check_active = False
             if result is None:
                 self.status.setText(f"OSCLinux {APP_VERSION} est à jour.")
                 return
@@ -190,6 +194,7 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             )
 
         def _show_update_error(self, message: str) -> None:
+            self._check_active = False
             self.check_button.setEnabled(True)
             self.status.setText(f"Mise à jour indisponible : {message}")
 
