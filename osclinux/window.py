@@ -359,9 +359,15 @@ class MainWindow(QMainWindow):
             answer = QMessageBox.question(self, "Désinstaller le module", f"Retirer « {self._catalog_by_id[module_id]['name']} » ?")
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        self._pending_modules.add(module_id)
-        self._render_catalog()
         entry = self._catalog_by_id[module_id]
+        self._pending_modules.add(module_id)
+        if operation == "update":
+            self.catalog_status.setText(f"Téléchargement de la mise à jour de {entry['name']} vers {entry['version']}…")
+        elif operation == "install":
+            self.catalog_status.setText(f"Installation de {entry['name']}…")
+        else:
+            self.catalog_status.setText(f"Désinstallation de {entry['name']}…")
+        self._render_catalog()
         future = self.store_executor.submit(self._perform_store_action, operation, entry)
         def completed(result) -> None:
             try:
@@ -398,9 +404,15 @@ class MainWindow(QMainWindow):
         action, module_id = operation.split(":", 1)
         self._pending_modules.discard(module_id)
         if error:
-            self.catalog_status.setText(f"Action impossible pour {module_id} : {error}")
+            name = self._catalog_by_id.get(module_id, {}).get("name", module_id)
+            self.catalog_status.setText(f"Échec de {action} pour {name} : {error}")
             self._append_log(f"Erreur {action} {module_id} : {error}")
             self._render_catalog()
+            QMessageBox.warning(
+                self,
+                "Mise à jour impossible" if action == "update" else "Action impossible",
+                f"{name} n’a pas pu être traité.\\n\\nDétail : {error}",
+            )
             return
         if action == "install":
             entry = self._catalog_by_id[module_id]
@@ -414,7 +426,14 @@ class MainWindow(QMainWindow):
             self.settings["order"] = [item for item in self.settings.get("order", []) if item != module_id]
             self._append_log(f"Module {self._catalog_by_id[module_id]['name']} désinstallé.")
         elif action == "update":
-            self._append_log(f"Module {self._catalog_by_id[module_id]['name']} mis à jour.")
+            entry = self._catalog_by_id[module_id]
+            self.catalog_status.setText(f"{entry['name']} mis à jour vers la version {entry['version']}.")
+            self._append_log(f"Module {entry['name']} mis à jour vers la version {entry['version']}.")
+            QMessageBox.information(
+                self,
+                "Mise à jour terminée",
+                f"{entry['name']} est maintenant en version {entry['version']}.",
+            )
         self._fill_order_list()
         self.save_all()
         self._render_catalog()
