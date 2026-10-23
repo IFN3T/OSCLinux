@@ -98,6 +98,7 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             self._threads: list[QThread] = []
             self._workers: dict[QThread, UpdateWorker] = {}
             self._check_active = False
+            self._close_when_idle = False
 
             title = QLabel("OSCLinux")
             title.setStyleSheet("font-size: 28px; font-weight: 700;")
@@ -144,6 +145,8 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             if thread in self._threads:
                 self._threads.remove(thread)
             self._workers.pop(thread, None)
+            if self._close_when_idle and not self._threads:
+                QTimer.singleShot(0, self.close)
 
         def check_updates(self) -> None:
             if self._check_active:
@@ -155,6 +158,8 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
 
         def _check_finished(self, result: object) -> None:
             self._check_active = False
+            if self._close_when_idle:
+                return
             if result is None:
                 self.status.setText(f"OSCLinux {APP_VERSION} est à jour.")
                 return
@@ -181,6 +186,8 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
             self._start_worker(UpdateWorker("download", release), self._download_finished)
 
         def _download_finished(self, result: object) -> None:
+            if self._close_when_idle:
+                return
             self.check_button.setEnabled(True)
             if not isinstance(result, Release):
                 self._show_update_error("La mise à jour n'a pas pu être préparée.")
@@ -195,8 +202,19 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
 
         def _show_update_error(self, message: str) -> None:
             self._check_active = False
+            if self._close_when_idle:
+                return
             self.check_button.setEnabled(True)
             self.status.setText(f"Mise à jour indisponible : {message}")
+
+        def closeEvent(self, event) -> None:
+            if any(thread.isRunning() for thread in self._threads):
+                self._close_when_idle = True
+                self.check_button.setEnabled(False)
+                self.status.setText("Fermeture après la fin de la mise à jour en cours…")
+                event.ignore()
+                return
+            event.accept()
 
     app = QApplication(sys.argv[:1])
     window = MainWindow()
