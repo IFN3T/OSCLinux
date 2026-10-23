@@ -1,8 +1,10 @@
 # OSCLinux
 
-OSCLinux est composé du programme principal et de son gestionnaire de mises à jour.
+OSCLinux est un gestionnaire de modules qui alterne des informations dans la chatbox OSC de VRChat.
 
-Utilise Python 3.10 ou une version plus récente et un environnement virtuel local :
+## Installation et lancement
+
+Python 3.10 ou plus récent est requis. Utilise un environnement virtuel local :
 
 ```sh
 python3 -m venv .venv
@@ -12,13 +14,24 @@ python -m pip install -r requirements.txt
 python OSCLinuxUpdater.py
 ```
 
-La fenêtre **OSCLinux Updater** vérifie les releases GitHub sans bloquer son interface. Son bouton **Lancer OSCLinux** ouvre le programme principal dans un processus séparé. OSCLinux peut aussi être lancé directement avec `python OSCLinux.py`.
+La fenêtre **OSCLinux Updater** vérifie les releases et le bouton **Lancer OSCLinux** ouvre l’application principale puis ferme le gestionnaire. OSCLinux peut aussi être démarré directement avec `python OSCLinux.py`.
 
-Le gestionnaire propose les versions stables plus récentes. Après confirmation, il télécharge et prépare la mise à jour pour le prochain lancement. Le programme applique les fichiers préparés au démarrage et redémarre afin de charger la nouvelle version.
+## Modules inclus
 
-Les vérifications réseau utilisent HTTPS avec un délai borné. Les archives sont limitées à 50 Mio, vérifiées avec le digest SHA-256 de GitHub et extraites uniquement pour les chemins autorisés (`OSCLinux.py`, `OSCLinuxUpdater.py`, `osclinux_updater.py` et `osclinux/`). Les chemins traversants, liens symboliques, archives trop volumineuses et redirections vers des hôtes inconnus sont refusés. L'installation conserve une sauvegarde et tente une restauration en cas d'échec. Les paramètres et fichiers hors liste ne sont pas remplacés.
+- **Spotify** lit le lecteur MPRIS de Linux via `playerctl` (optionnel) et affiche titre, artiste et progression.
+- **CPU / RAM / GPU** lit les statistiques système Linux et `nvidia-smi` si disponible.
+- **Températures** lit les zones thermiques Linux et les températures NVIDIA si disponibles.
+- **Météo** récupère les conditions courantes pour une ville choisie via les API Open-Meteo.
+- **Horloge** affiche l’heure au format 12 h ou 24 h.
+- **Personnalisé** envoie un texte libre avec `{time}`, `{date}` et `{city}` comme variables.
 
-Une erreur réseau ou GitHub n'empêche pas le démarrage de l'application.
+Active les modules souhaités, règle leur durée d’affichage et l’ordre, puis démarre le script. Le mode alternance envoie un module à la fois ; les autres modes utilisent le premier module actif ou combinent les valeurs. Les messages OSC utilisent `/chatbox/input` et sont limités à 144 caractères. L’adresse et les ports OSC sont configurables dans l’interface. VRChat doit avoir OSC activé.
+
+Les paramètres sont conservés dans `~/.config/osclinux/settings.json`. L’option de lancement de session crée ou retire le fichier `.desktop` dans `~/.config/autostart/`.
+
+## Mises à jour
+
+`osclinux_updater.py` consulte les releases stables de `IFN3T/OSCLinux`. Une nouvelle version est proposée à l’utilisateur ; le téléchargement n’a lieu qu’après confirmation. Les archives sont limitées à 50 Mio, contrôlées avec le digest SHA-256 fourni par GitHub et extraites uniquement dans `OSCLinux.py`, `OSCLinuxUpdater.py`, `osclinux_updater.py` et `osclinux/`. Les paramètres, modules externes et autres données ne sont pas remplacés.
 
 Pour vérifier le canal manuellement :
 
@@ -27,17 +40,4 @@ source .venv/bin/activate
 python OSCLinuxUpdater.py --check-updates
 ```
 
-Pour exécuter les vérifications de régression :
-
-```sh
-source .venv/bin/activate
-python -m unittest discover -s tests -v
-```
-
-## Publier une mise à jour
-
-1. Mets `APP_VERSION` à jour dans `osclinux/version.py`.
-2. Publie une GitHub Release avec un tag sémantique, par exemple `v0.2.0`.
-3. Ajoute exactement un fichier nommé `OSCLinux-update.zip`.
-4. Place à la racine du ZIP `OSCLinux.py`, `OSCLinuxUpdater.py`, `osclinux_updater.py` et les fichiers du paquet `osclinux/`. N'inclus pas les paramètres ou données utilisateur.
-5. Publie la release. GitHub doit fournir le digest SHA-256 du fichier ; le gestionnaire refusera une archive sans ce digest.
+Pour publier une mise à jour, augmente `APP_VERSION` dans `osclinux/version.py`, crée une release sémantique (par exemple `v0.3.0`) et joins exactement un fichier `OSCLinux-update.zip` contenant les deux scripts, `osclinux_updater.py` et le répertoire `osclinux/`. GitHub doit fournir le digest SHA-256 de l’archive.
