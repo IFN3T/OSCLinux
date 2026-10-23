@@ -36,7 +36,7 @@ except UpdateError as exc:
 
 Network checks use HTTPS and a bounded timeout. Downloads are limited to 50 MiB,
 verified against GitHub's SHA-256 release asset digest, and extracted only to
-`OSCLinux.py` and `osclinux/`. Archive traversal, symlinks, oversized archives,
+`OSCLinux.py`, `osclinux_updater.py`, and `osclinux/`. Archive traversal, symlinks, oversized archives,
 and redirects outside the GitHub release asset hosts are rejected. Installation
 backs up replaced files and attempts rollback on failure. Modules and user data
 are never overwritten by this updater.
@@ -50,8 +50,9 @@ must not prevent the current version from starting.
 1. Update the application's `APP_VERSION` and commit the release source.
 2. Create a GitHub Release whose tag is a semantic version such as `v0.2.0`.
 3. Attach exactly one asset named `OSCLinux-update.zip`.
-4. Put `OSCLinux.py` and any `osclinux/` package files at the root of the ZIP.
-   Do not include settings, modules, credentials, or user data.
+4. Put `OSCLinux.py`, `osclinux_updater.py`, and any `osclinux/` package files
+   at the root of the ZIP. Do not include settings, modules, credentials, or
+   user data.
 5. Publish the release. GitHub must expose a SHA-256 digest for the asset; the
    updater refuses to stage the release if that digest is unavailable.
 
