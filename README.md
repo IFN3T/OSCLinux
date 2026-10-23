@@ -1,8 +1,19 @@
 # OSCLinux
 
-OSCLinux is in its initial setup. The repository currently contains the main
-program updater, ready to be called by the Qt startup flow once the application
-interface is added.
+OSCLinux currently provides its Qt main window and the GitHub Releases updater.
+Spotify and VRChat OSC integrations will be added as optional modules.
+
+Install and launch the application with Python 3.10 or newer:
+
+```sh
+python3 -m pip install -r requirements.txt
+python3 OSCLinux.py
+```
+
+The app checks for updates at startup without blocking the Qt interface. It
+offers a newer version and applies an accepted update at the next launch. The
+command `python3 OSCLinux.py --check-updates` checks the release channel and
+exits, which is useful for diagnostics.
 
 ## Main program updates
 
@@ -12,35 +23,6 @@ install anything just because a release exists. After confirmation, `queue()`
 downloads and stages the update for the next launch. The application applies it
 before importing the rest of its modules, then restarts to load the new code.
 
-```python
-from pathlib import Path
-import os
-import sys
-
-from osclinux_updater import ReleaseUpdater, UpdateError
-
-APP_VERSION = "0.1.0"
-updater = ReleaseUpdater(APP_VERSION)
-install_dir = Path(__file__).resolve().parent
-
-# Run this before importing application modules that may themselves be updated.
-try:
-    if updater.apply_pending(install_dir=install_dir):
-        os.execv(sys.executable, [sys.executable, *sys.argv])
-except UpdateError as exc:
-    print(f"Mise à jour précédente non appliquée : {exc}")
-
-try:
-    release = updater.check()
-    if release is not None:
-        # Present release.title, release.version and release.notes to the user.
-        # Only call queue() after the user chooses to download the update.
-        updater.queue(release)
-except UpdateError as exc:
-    # Log the error and continue starting the current version offline.
-    print(f"Mise à jour indisponible : {exc}")
-```
-
 Network checks use HTTPS and a bounded timeout. Downloads are limited to 50 MiB,
 verified against GitHub's SHA-256 release asset digest, and extracted only to
 `OSCLinux.py`, `osclinux_updater.py`, and `osclinux/`. Archive traversal, symlinks, oversized archives,
@@ -48,13 +30,12 @@ and redirects outside the GitHub release asset hosts are rejected. Installation
 backs up replaced files and attempts rollback on failure. Modules and user data
 are never overwritten by this updater.
 
-The updater uses only the Python standard library. Release checks should run in
-a worker thread so the Qt interface stays responsive. A network or GitHub error
-must not prevent the current version from starting.
+The updater uses only the Python standard library; the main window uses PySide6.
+A network or GitHub error does not prevent the current version from starting.
 
 ## Publishing a program update
 
-1. Update the application's `APP_VERSION` and commit the release source.
+1. Update `APP_VERSION` in `OSCLinux.py` and commit the release source.
 2. Create a GitHub Release whose tag is a semantic version such as `v0.2.0`.
 3. Attach exactly one asset named `OSCLinux-update.zip`.
 4. Put `OSCLinux.py`, `osclinux_updater.py`, and any `osclinux/` package files
