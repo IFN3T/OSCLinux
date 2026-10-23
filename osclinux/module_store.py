@@ -10,6 +10,7 @@ import re
 import shutil
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -35,8 +36,7 @@ class ModuleStore:
         request = urllib.request.Request(MANIFEST_URL, headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "application/json"})
         try:
             with urllib.request.urlopen(request, timeout=8) as response:
-                if response.geturl().split("/")[2] not in {"raw.githubusercontent.com"}:
-                    raise ModuleStoreError("Hôte du catalogue non autorisé.")
+                _require_raw_github(response.geturl(), "Hôte du catalogue non autorisé.")
                 payload = json.loads(response.read(1_000_000).decode("utf-8"))
             return _validate_manifest(payload), True
         except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, ModuleStoreError):
@@ -115,8 +115,7 @@ class ModuleStore:
         request = urllib.request.Request(url, headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "text/plain"})
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
-                if response.geturl().split("/")[2] != "raw.githubusercontent.com":
-                    raise ModuleStoreError("Redirection vers un hôte interdit.")
+                _require_raw_github(response.geturl(), "Redirection vers un hôte interdit.")
                 package = response.read(2_000_000 + 1)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise ModuleStoreError(f"Téléchargement du module impossible : {exc}") from exc
@@ -170,6 +169,8 @@ def _validate_entry(entry: Any) -> str:
     for field in ("name", "description", "author", "version"):
         if not isinstance(entry.get(field), str) or not entry[field].strip() or len(entry[field]) > 240:
             raise ModuleStoreError(f"Champ {field} invalide pour {module_id}.")
+    if not re.fullmatch(r"v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", entry["version"]):
+        raise ModuleStoreError(f"Version invalide pour {module_id}.")
     if not re.fullmatch(r"[0-9a-f]{64}", str(entry.get("sha256", ""))):
         raise ModuleStoreError(f"Empreinte SHA-256 absente ou invalide pour {module_id}.")
     schema = entry.get("settings", [])
@@ -183,3 +184,9 @@ def _validate_entry(entry: Any) -> str:
         if setting["type"] == "choice" and (not isinstance(setting.get("choices"), list) or not setting["choices"]):
             raise ModuleStoreError(f"Choix invalide pour {module_id}.")
     return module_id
+
+
+def _require_raw_github(url: str, message: str) -> None:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "raw.githubusercontent.com" or parsed.username or parsed.password or parsed.port not in (None, 443):
+        raise ModuleStoreError(message)
