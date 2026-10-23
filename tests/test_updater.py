@@ -70,7 +70,9 @@ class StagingTests(unittest.TestCase):
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("OSCLinux.py", "APP_VERSION = '0.2.0'\n")
-            archive.writestr("osclinux_updater.py", "# updated updater\n")
+            archive.writestr("OSCLinuxUpdater.py", "# updated updater window\n")
+            archive.writestr("osclinux_updater.py", "# updated updater core\n")
+            archive.writestr("osclinux/version.py", "APP_VERSION = '0.2.0'\n")
         data = buffer.getvalue()
         release = Release(
             version="0.2.0",
@@ -103,6 +105,8 @@ class StagingTests(unittest.TestCase):
             next_launch = ReleaseUpdater("0.1.0", cache_dir=cache)
             self.assertTrue(next_launch.apply_pending(install_dir=install))
             self.assertIn("0.2.0", (install / "OSCLinux.py").read_text(encoding="utf-8"))
+            self.assertTrue((install / "OSCLinuxUpdater.py").is_file())
+            self.assertTrue((install / "osclinux/version.py").is_file())
             self.assertEqual((install / "settings.json").read_text(encoding="utf-8"), "{}")
             self.assertFalse((cache / "pending-update.json").exists())
 
