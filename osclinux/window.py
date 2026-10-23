@@ -10,8 +10,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QMimeData, QObject, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -99,6 +99,152 @@ class StoreBridge(QObject):
     completed = Signal(str, object, str)
 
 
+class ModuleSourceList(QListWidget):
+    def mimeData(self, items):
+        mime = super().mimeData(items)
+        if items:
+            mime.setText(str(items[0].data(Qt.ItemDataRole.UserRole)))
+        return mime
+
+
+class TimelineWidget(QWidget):
+    sequenceChanged = Signal(object)
+    moduleSelected = Signal(str)
+
+    def __init__(self, sequence: list[dict], names: dict[str, str], parent=None):
+        super().__init__(parent)
+        self.sequence = [dict(item) for item in sequence]
+        self.names = names
+        self.selected_id = ""
+        self.drag_index = -1
+        self.resize_index = -1
+        self.press_x = 0
+        self.setAcceptDrops(True)
+        self.setMinimumHeight(145)
+        self.setMouseTracking(True)
+        self._update_width()
+
+    def set_data(self, sequence: list[dict], names: dict[str, str]):
+        self.sequence = [dict(item) for item in sequence]
+        self.names = names
+        self._update_width()
+        self.update()
+
+    def _update_width(self):
+        total = sum(int(item.get("duration", 10)) for item in self.sequence)
+        self.setMinimumWidth(max(900, 90 + total * 12))
+
+    def _positions(self):
+        x = 54
+        result = []
+        for item in self.sequence:
+            width = max(24, int(item.get("duration", 10)) * 12)
+            result.append((x, width))
+            x += width
+        return result
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#0d1425"))
+        positions = self._positions()
+        total = sum(int(item.get("duration", 10)) for item in self.sequence)
+        painter.setPen(QColor("#8fa6ce"))
+        for second in range(0, total + 11, 5):
+            x = 54 + second * 12
+            painter.drawLine(x, 25, x, 43)
+            painter.drawText(x - 12, 18, f"{second}s")
+        painter.setPen(QColor("#263a5b"))
+        painter.drawLine(54, 42, max(70, 54 + total * 12), 42)
+        colors = ["#263d70", "#1c5360", "#593664", "#61501f", "#244e3b"]
+        for index, (item, (x, width)) in enumerate(zip(self.sequence, positions)):
+            selected = item["id"] == self.selected_id
+            painter.setBrush(QColor(colors[index % len(colors)]))
+            painter.setPen(QColor("#718eff") if selected else QColor("#3b5685"))
+            painter.drawRoundedRect(x, 54, width - 4, 58, 7, 7)
+            painter.setPen(QColor("#f2f6ff"))
+            name = self.names.get(item["id"], item["id"])
+            painter.drawText(x + 9, 78, painter.fontMetrics().elidedText(name, Qt.TextElideMode.ElideRight, max(20, width - 25)))
+            painter.setPen(QColor("#b8c8e6"))
+            painter.drawText(x + 9, 99, f'{item.get("duration", 10)} s')
+            painter.setPen(QColor("#91a8ce"))
+            painter.drawLine(x + width - 7, 59, x + width - 7, 106)
+        if not self.sequence:
+            painter.setPen(QColor("#8fa6ce"))
+            painter.drawText(54, 83, "Glissez ici les modules à planifier.")
+
+    def _index_at(self, x):
+        for index, (left, width) in enumerate(self._positions()):
+            if left <= x <= left + width:
+                return index
+        return -1
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.press_x = int(event.position().x())
+            self.drag_index = self._index_at(self.press_x)
+            if self.drag_index >= 0:
+                left, width = self._positions()[self.drag_index]
+                self.resize_index = self.drag_index if self.press_x >= left + width - 13 else -1
+                self.selected_id = self.sequence[self.drag_index]["id"]
+                self.moduleSelected.emit(self.selected_id)
+                self.update()
+
+    def mouseMoveEvent(self, event):
+        if self.resize_index >= 0 and event.buttons() & Qt.MouseButton.LeftButton:
+            left, _ = self._positions()[self.resize_index]
+            duration = max(2, min(120, round((event.position().x() - left) / 12)))
+            self.sequence[self.resize_index]["duration"] = duration
+            self._update_width()
+            self.update()
+        elif self.drag_index >= 0 and event.buttons() & Qt.MouseButton.LeftButton:
+            if abs(int(event.position().x()) - self.press_x) >= QApplication.startDragDistance():
+                item = self.sequence[self.drag_index]
+                drag = QDrag(self)
+                mime = QMimeData()
+                mime.setText(item["id"])
+                drag.setMimeData(mime)
+                drag.exec(Qt.DropAction.MoveAction)
+                self.drag_index = -1
+
+    def mouseReleaseEvent(self, event):
+        if self.resize_index >= 0:
+            self.resize_index = -1
+            self.sequenceChanged.emit([dict(item) for item in self.sequence])
+        self.drag_index = -1
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        module_id = event.mimeData().text().strip()
+        if not module_id:
+            return
+        existing = next((index for index, item in enumerate(self.sequence) if item["id"] == module_id), -1)
+        if existing >= 0:
+            item = self.sequence.pop(existing)
+        else:
+            item = {"id": module_id, "duration": 10}
+        x = int(event.position().x())
+        insert_at = len(self.sequence)
+        for index, (left, width) in enumerate(self._positions()):
+            if x < left + width // 2:
+                insert_at = index
+                break
+        self.sequence.insert(insert_at, item)
+        self.selected_id = module_id
+        self._update_width()
+        self.update()
+        self.sequenceChanged.emit([dict(item) for item in self.sequence])
+        self.moduleSelected.emit(module_id)
+        event.acceptProposedAction()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -159,7 +305,7 @@ class MainWindow(QMainWindow):
         nav_group = QButtonGroup(self)
         nav_group.setExclusive(True)
         for index, (text, icon) in enumerate([
-            ("Modules", "▦"), ("Configuration OSC", "◉"), ("Apparence", "◈"),
+            ("Modules", "▦"), ("Règle Temporelle", "◷"), ("Configuration OSC", "◉"), ("Apparence", "◈"),
             ("Paramètres généraux", "⚙"), ("Journal", "▤"),
         ]):
             button = QPushButton(f"{icon}   {text}")
@@ -208,6 +354,7 @@ class MainWindow(QMainWindow):
         pages_palette.setColor(QPalette.ColorRole.Window, QColor("#0d1425"))
         self.pages.setPalette(pages_palette)
         self.pages.addWidget(self._modules_page())
+        self.pages.addWidget(self._temporal_page())
         self.pages.addWidget(self._osc_page())
         self.pages.addWidget(self._appearance_page())
         self.pages.addWidget(self._general_page())
@@ -396,6 +543,7 @@ class MainWindow(QMainWindow):
                 return
             self.catalog, online = result
             self._catalog_by_id = {entry["id"]: entry for entry in self.catalog}
+            self._ensure_timeline()
             source = "en ligne" if online else "local (hors connexion)"
             self.catalog_status.setText(f"{len(self.catalog)} modules disponibles · catalogue {source} · aucun module préinstallé")
             self._render_catalog()
@@ -419,10 +567,12 @@ class MainWindow(QMainWindow):
             options = {setting["key"]: setting.get("default", "") for setting in entry.get("settings", [])}
             options.update({"enabled": True, "interval": 10})
             self.settings["module_options"][module_id] = options
+            self.settings.setdefault("timeline", []).append({"id": module_id, "duration": 10})
             self.settings.setdefault("order", []).append(module_id)
             self._append_log(f"Module {entry['name']} installé ({entry['version']}).")
         elif action == "uninstall":
             self.settings["module_options"].pop(module_id, None)
+            self.settings["timeline"] = [item for item in self.settings.get("timeline", []) if item.get("id") != module_id]
             self.settings["order"] = [item for item in self.settings.get("order", []) if item != module_id]
             self._append_log(f"Module {self._catalog_by_id[module_id]['name']} désinstallé.")
         elif action == "update":
@@ -434,7 +584,7 @@ class MainWindow(QMainWindow):
                 "Mise à jour terminée",
                 f"{entry['name']} est maintenant en version {entry['version']}.",
             )
-        self._fill_order_list()
+        self._ensure_timeline()
         self.save_all()
         self._render_catalog()
 
@@ -448,9 +598,7 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         enabled = QCheckBox("Module actif dans l’alternance")
         enabled.setChecked(bool(options.get("enabled", False)))
-        interval = self._spin(options.get("interval", 10), 2, 120)
         form.addRow("État", enabled)
-        form.addRow("Durée d’affichage", interval)
         controls: dict[str, QWidget] = {}
         for setting in entry.get("settings", []):
             key = setting["key"]
@@ -477,7 +625,6 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         options["enabled"] = enabled.isChecked()
-        options["interval"] = interval.value()
         for key, control in controls.items():
             if isinstance(control, QCheckBox):
                 options[key] = control.isChecked()
@@ -489,9 +636,8 @@ class MainWindow(QMainWindow):
                 options[key] = control.text()
         self.settings["module_options"][module_id] = options
         self.save_all()
+        self._show_timeline_summary(module_id)
         self._append_log(f"Paramètres du module {entry['name']} enregistrés.")
-
-    @staticmethod
     def _version_newer(candidate: str, current: str) -> bool:
         def parts(value: str) -> tuple[int, ...]:
             try:
@@ -565,24 +711,130 @@ class MainWindow(QMainWindow):
         self.general_autostart.setChecked(bool(self.settings["osc"].get("startup", False)))
         form.addWidget(self.general_autostart)
         layout.addWidget(panel)
-        order_panel = QFrame()
-        order_panel.setObjectName("panel")
-        order_layout = QVBoxLayout(order_panel)
-        order_layout.addWidget(self._section_title("Ordre des modules installés", "Utilisé par le mode d’alternance."))
-        self.order_list = QListWidget()
-        self.order_list.setMaximumHeight(220)
-        order_layout.addWidget(self.order_list)
-        order_buttons = QHBoxLayout()
-        self.order_up = QPushButton("↑ Monter")
-        self.order_down = QPushButton("↓ Descendre")
-        self.order_up.clicked.connect(lambda: self._move_order(-1))
-        self.order_down.clicked.connect(lambda: self._move_order(1))
-        order_buttons.addWidget(self.order_up)
-        order_buttons.addWidget(self.order_down)
-        order_layout.addLayout(order_buttons)
-        layout.addWidget(order_panel)
         layout.addStretch(1)
         return page
+
+    def _temporal_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+        layout.addLayout(self._page_header(
+            "Règle Temporelle",
+            "Glissez les modules sur la règle, déplacez-les pour choisir l’ordre et étirez leur bord droit pour régler leur durée."
+        ))
+        available_panel = QFrame()
+        available_panel.setObjectName("panel")
+        available_layout = QVBoxLayout(available_panel)
+        available_layout.addWidget(self._section_title("Modules disponibles", "Les modules installés peuvent être placés dans la séquence."))
+        self.timeline_sources = ModuleSourceList()
+        self.timeline_sources.setViewMode(QListWidget.ViewMode.IconMode)
+        self.timeline_sources.setFlow(QListWidget.Flow.LeftToRight)
+        self.timeline_sources.setWrapping(True)
+        self.timeline_sources.setMovement(QListWidget.Movement.Static)
+        self.timeline_sources.setDragEnabled(True)
+        self.timeline_sources.setMaximumHeight(105)
+        available_layout.addWidget(self.timeline_sources)
+        layout.addWidget(available_panel)
+
+        timeline_panel = QFrame()
+        timeline_panel.setObjectName("panel")
+        timeline_layout = QVBoxLayout(timeline_panel)
+        timeline_layout.addWidget(self._section_title("Séquence d’affichage", "La règle est graduée en secondes. Faites glisser les blocs pour changer leur ordre."))
+        self.timeline_scroll = QScrollArea()
+        self.timeline_scroll.setWidgetResizable(False)
+        self.timeline = TimelineWidget(self.settings.get("timeline") or [], {}, self)
+        self.timeline_scroll.setWidget(self.timeline)
+        timeline_layout.addWidget(self.timeline_scroll)
+        layout.addWidget(timeline_panel)
+
+        summary = QFrame()
+        summary.setObjectName("panel")
+        summary_layout = QVBoxLayout(summary)
+        summary_layout.addWidget(self._section_title("Module sélectionné", "Résumé des informations et du contenu affiché dans la chatbox."))
+        self.timeline_summary_title = QLabel("Sélectionnez un module dans la règle.")
+        self.timeline_summary_title.setStyleSheet("font-size:16px;font-weight:700")
+        self.timeline_summary_meta = QLabel("")
+        self.timeline_summary_meta.setObjectName("muted")
+        self.timeline_summary_description = QLabel("")
+        self.timeline_summary_description.setWordWrap(True)
+        self.timeline_summary_preview = QLabel("")
+        self.timeline_summary_preview.setWordWrap(True)
+        self.timeline_summary_preview.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        summary_layout.addWidget(self.timeline_summary_title)
+        summary_layout.addWidget(self.timeline_summary_meta)
+        summary_layout.addWidget(self.timeline_summary_description)
+        summary_layout.addWidget(self.timeline_summary_preview)
+        layout.addWidget(summary, 1)
+
+        self.timeline.sequenceChanged.connect(self._timeline_changed)
+        self.timeline.moduleSelected.connect(self._show_timeline_summary)
+        return self._scroll(page)
+
+    def _ensure_timeline(self) -> None:
+        installed = self.store.installed_versions()
+        saved = self.settings.get("timeline")
+        if not isinstance(saved, list):
+            old_order = self.settings.get("order", [])
+            saved = [
+                {"id": module_id, "duration": self.settings.get("module_options", {}).get(module_id, {}).get("interval", 10)}
+                for module_id in old_order
+            ]
+        normalized = []
+        seen = set()
+        for item in saved:
+            if not isinstance(item, dict):
+                continue
+            module_id = item.get("id")
+            if module_id not in installed or module_id in seen:
+                continue
+            try:
+                duration = max(2, min(120, int(item.get("duration", 10))))
+            except (TypeError, ValueError):
+                duration = 10
+            normalized.append({"id": module_id, "duration": duration})
+            seen.add(module_id)
+        normalized.extend({"id": mid, "duration": 10} for mid in installed if mid not in seen)
+        self.settings["timeline"] = normalized
+        self.settings["order"] = [item["id"] for item in normalized]
+        self._refresh_timeline()
+
+    def _refresh_timeline(self) -> None:
+        if not hasattr(self, "timeline"):
+            return
+        installed = self.store.installed_versions()
+        entries = {entry["id"]: entry for entry in self.catalog}
+        self.timeline_sources.clear()
+        for module_id, version in installed.items():
+            entry = entries.get(module_id, {})
+            item = QListWidgetItem(f'{entry.get("name", module_id)}\n{version}')
+            item.setData(Qt.ItemDataRole.UserRole, module_id)
+            item.setToolTip("Glissez ce module dans la règle temporelle.")
+            self.timeline_sources.addItem(item)
+        names = {mid: entries.get(mid, {}).get("name", mid) for mid in installed}
+        self.timeline.set_data(self.settings.get("timeline", []), names)
+        if self.timeline.selected_id:
+            self._show_timeline_summary(self.timeline.selected_id)
+
+    def _timeline_changed(self, sequence: list) -> None:
+        self.settings["timeline"] = [dict(item) for item in sequence]
+        self.settings["order"] = [item["id"] for item in sequence]
+        self.save_all()
+        self._refresh_timeline()
+
+    def _show_timeline_summary(self, module_id: str) -> None:
+        entry = self._catalog_by_id.get(module_id, {})
+        version = self.store.installed_versions().get(module_id, "—")
+        item = next((part for part in self.settings.get("timeline", []) if part["id"] == module_id), None)
+        duration = f'{item["duration"]} s dans la séquence' if item else "Non planifié"
+        options = self.settings.get("module_options", {}).get(module_id, {})
+        status = "Actif" if options.get("enabled", False) else "Inactif"
+        self.timeline_summary_title.setText(entry.get("name", module_id))
+        self.timeline_summary_meta.setText(f'Version {version} · Auteur : {entry.get("author", "—")} · {duration} · {status}')
+        self.timeline_summary_description.setText(entry.get("description", "Description non disponible."))
+        preview = self.providers.get(module_id, options, lambda: self.store.load_text(module_id, options))
+        self.timeline_summary_preview.setText(f"Affichage prévu : {preview}")
+
 
     def _journal_page(self) -> QWidget:
         page = QWidget()
@@ -648,21 +900,7 @@ class MainWindow(QMainWindow):
         return scroll
 
     def _fill_order_list(self) -> None:
-        if not hasattr(self, "order_list"):
-            return
-        self.order_list.clear()
-        installed = self.store.installed_versions()
-        order = self.settings.get("order", [])
-        ordered = [module_id for module_id in order if module_id in installed]
-        ordered.extend(module_id for module_id in installed if module_id not in ordered)
-        for module_id in ordered:
-            entry = self._catalog_by_id.get(module_id, {})
-            name = entry.get("name", module_id)
-            item = QListWidgetItem(f"{name}  ·  {installed[module_id]}")
-            item.setData(Qt.ItemDataRole.UserRole, module_id)
-            self.order_list.addItem(item)
-        self.settings["order"] = ordered
-
+        self._ensure_timeline()
     def _move_order(self, delta: int) -> None:
         index = self.order_list.currentRow()
         target = index + delta
@@ -671,8 +909,9 @@ class MainWindow(QMainWindow):
         item = self.order_list.takeItem(index)
         self.order_list.insertItem(target, item)
         self.order_list.setCurrentRow(target)
-        if hasattr(self, "order_list"):
-            self.settings["order"] = [self.order_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.order_list.count())]
+        if hasattr(self, "timeline"):
+            self.settings["timeline"] = [dict(item) for item in self.timeline.sequence]
+            self.settings["order"] = [item["id"] for item in self.timeline.sequence]
         self._append_log("Ordre des modules modifié.")
 
     def _collect_settings(self) -> None:
@@ -744,6 +983,8 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(DARK_STYLE if theme == "Sombre" else DARK_STYLE.replace("#0d1425", "#e9eef7").replace("#0a1120", "#dfe6f1").replace("#111c31", "#f5f7fb").replace("#0c172a", "#ffffff").replace("#dce7ff", "#17243b").replace("#f2f6ff", "#101a30").replace("#ecf2ff", "#101a30").replace("#8fa6ce", "#526580").replace("#b4c5e7", "#263957"))
 
     def refresh_preview(self) -> None:
+        if hasattr(self, "timeline") and self.timeline.selected_id:
+            self._show_timeline_summary(self.timeline.selected_id)
         if self.last_heard and time.monotonic() - self.last_heard < 10:
             self.vrchat_state.setText("●  VRChat : détecté")
             self.vrchat_state.setStyleSheet("color:#20d889")
@@ -787,13 +1028,20 @@ class MainWindow(QMainWindow):
     def _active_modules(self) -> list[str]:
         installed = self.store.installed_versions()
         options = self.settings.get("module_options", {})
-        ordered = [module_id for module_id in self.settings.get("order", []) if module_id in installed]
+        sequence = self.settings.get("timeline", [])
+        ordered = [item["id"] for item in sequence if item.get("id") in installed]
         ordered.extend(module_id for module_id in installed if module_id not in ordered)
         return [module_id for module_id in ordered if options.get(module_id, {}).get("enabled", False)]
-
     def _module_text(self, module_id: str) -> str:
         options = self.settings.get("module_options", {}).get(module_id, {})
         return self.providers.get(module_id, options, lambda: self.store.load_text(module_id, options))
+
+    def _module_duration(self, module_id: str) -> int:
+        entry = next((item for item in self.settings.get("timeline", []) if item.get("id") == module_id), {})
+        try:
+            return max(2, min(120, int(entry.get("duration", 10))))
+        except (TypeError, ValueError):
+            return 10
 
     def _send_next(self) -> None:
         if not self.running:
@@ -808,7 +1056,7 @@ class MainWindow(QMainWindow):
             if mode == "single":
                 module_id = active[0]
                 text = self._module_text(module_id)
-                interval = int(options.get(module_id, {}).get("interval", 10))
+                interval = int(self._module_duration(module_id))
                 if text == "Chargement…":
                     interval = 1
                 else:
@@ -825,7 +1073,7 @@ class MainWindow(QMainWindow):
                 module_id = active[self.active_index]
                 self.active_index = (self.active_index + 1) % len(active)
                 text = self._module_text(module_id)
-                interval = int(options.get(module_id, {}).get("interval", 10))
+                interval = int(self._module_duration(module_id))
                 if text == "Chargement…":
                     interval = 1
                 else:
