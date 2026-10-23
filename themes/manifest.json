@@ -6,8 +6,8 @@
       "name": "Clair",
       "description": "Palette claire avec des contrastes adaptés aux surfaces et aux textes de l’application.",
       "author": "OSCLinux",
-      "version": "1.0.0",
-      "sha256": "6a86dd030fa0a3db302a9dd64da10c3fc0724850a31825a6ef6b440530ed7fc5"
+      "version": "1.1.0",
+      "sha256": "20b02af418a0277e28ea022d6cc23c97617906f1751dba3b2ab44bc8a67d1194"
     }
   ]
 }

@@ -30,7 +30,7 @@ Chaque paquet Python du catalogue expose `get_text(options) -> str`. Le manifest
 
 Dans **Thèmes**, le thème de base OSCLinux est toujours installé et ne peut pas être supprimé. Les autres thèmes sont récupérés depuis `themes/manifest.json` et peuvent être installés, appliqués, mis à jour ou supprimés. Chaque paquet est un fichier JSON limité à des couleurs de la palette autorisée ; son empreinte SHA-256 est vérifiée avant installation. Les thèmes installés sont stockés dans `~/.local/share/osclinux/themes/`.
 
-Une entrée de manifeste contient `id`, `name`, `description`, `author`, `version` et `sha256`. Le paquet correspondant est `themes/packages/<id>.json` et contient `schema_version: 1` ainsi qu’un objet `colors` associant des couleurs hexadécimales autorisées à leurs nouvelles valeurs.
+Une entrée de manifeste contient `id`, `name`, `description`, `author`, `version` et `sha256`. Le paquet correspondant est `themes/packages/<id>.json` et utilise `schema_version: 2`. Son objet `colors` attribue une couleur à chaque élément de l’interface : arrière-plans, textes, boutons, champs, navigation, indicateurs et règle temporelle. Son objet `shape` règle les arrondis et espacements des boutons, panneaux, cartes et champs. Les jetons de couleur et les dimensions acceptées sont explicitement limités pour empêcher un thème de modifier du code ou d’injecter du style arbitraire.
 
 ## Mises à jour
 

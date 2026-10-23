@@ -24,19 +24,38 @@ BASE_THEME_ID = "base"
 BASE_THEME_VERSION = "1.0.0"
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
-
-# Theme files can only replace known color literals in the application stylesheet.
-ALLOWED_COLORS = {
-    "#0d1425", "#0a1120", "#111c31", "#0c172a", "#dce7ff", "#f2f6ff",
-    "#ecf2ff", "#8fa6ce", "#b4c5e7", "#1a2a47", "#1a2944", "#263a60",
-    "#2d4266", "#587df7", "#15233c",
-    "#334ff0", "#536bff", "#4560ff", "#16834f", "#22b970", "#1ba862",
-    "#3a2033", "#ff9eae", "#20365d", "#8fb4ff", "#293d60", "#50668c",
-    "#405bfa", "#7387ff", "#526aff", "#b8c4ff", "#2c4167", "#3a5685",
-    "#4969a3", "#6688ca", "#263a5b", "#1b3157", "#5974ff", "#9db5dd",
-    "#1c2a45", "#283a5a", "#91a8ce", "#718eff", "#b8c8e6", "#263d70", "#1c5360",
-    "#593664", "#61501f", "#244e3b",
+COLOR_TOKENS = {
+    "window_bg", "window_text", "sidebar_bg", "topbar_bg", "panel_bg", "card_bg", "preview_bg",
+    "bubble_bg", "bubble_border", "text_primary", "text_title", "text_page_title", "text_muted",
+    "text_secondary", "preview_text", "preview_hint", "border", "border_strong", "button_bg",
+    "button_hover", "button_border", "button_hover_border", "button_text", "primary_bg",
+    "primary_hover", "primary_border", "primary_text", "danger_text", "danger_bg", "success_bg",
+    "success_hover", "success_border", "success_text", "nav_text", "nav_active_bg", "nav_active_text", "nav_hover_bg",
+    "input_bg", "input_border", "input_text", "input_focus", "selection_bg", "check_bg", "check_border",
+    "check_active", "check_active_border", "radio_active", "radio_center", "scroll_handle", "scroll_border",
+    "scroll_hover", "scroll_hover_border", "timeline_selected", "timeline_selected_border", "slider_track",
+    "slider_handle", "status_border", "status_text", "accent", "timeline_bg", "timeline_tick",
+    "timeline_guide", "timeline_text", "timeline_secondary", "timeline_block1", "timeline_block2",
+    "timeline_block3", "timeline_block4", "timeline_block5", "timeline_border",
 }
+SHAPE_LIMITS = {
+    "button_radius": (0, 24), "panel_radius": (0, 28), "card_radius": (0, 24),
+    "input_radius": (0, 20), "control_radius": (0, 12), "button_padding_y": (4, 18),
+    "button_padding_x": (6, 28), "timeline_radius": (0, 20), "bubble_radius": (0, 28),
+    "icon_radius": (0, 40),
+}
+DEFAULT_SHAPE = {
+    "button_radius": 7, "panel_radius": 10, "card_radius": 10, "input_radius": 6,
+    "control_radius": 4, "button_padding_y": 9, "button_padding_x": 13, "timeline_radius": 7,
+    "bubble_radius": 12, "icon_radius": 20,
+}
+LEGACY_COLOR_VALUES = {"#0d1425", "#0a1120", "#111c31", "#0c172a", "#dce7ff", "#f2f6ff", "#ecf2ff",
+    "#8fa6ce", "#b4c5e7", "#1a2a47", "#1a2944", "#263a60", "#2d4266", "#587df7", "#15233c",
+    "#334ff0", "#536bff", "#4560ff", "#16834f", "#22b970", "#1ba862", "#3a2033", "#ff9eae",
+    "#20365d", "#8fb4ff", "#293d60", "#50668c", "#405bfa", "#7387ff", "#526aff", "#b8c4ff",
+    "#2c4167", "#3a5685", "#4969a3", "#6688ca", "#263a5b", "#1b3157", "#5974ff", "#9db5dd",
+    "#1c2a45", "#283a5a", "#91a8ce", "#718eff", "#b8c8e6", "#263d70", "#1c5360", "#593664",
+    "#61501f", "#244e3b"}
 
 
 class ThemeStoreError(RuntimeError):
@@ -104,26 +123,31 @@ class ThemeStore:
             shutil.rmtree(destination)
 
     def palette(self, theme_id: str) -> dict[str, str]:
+        return self.configuration(theme_id)["colors"]
+
+    def configuration(self, theme_id: str) -> dict[str, Any]:
         if theme_id == BASE_THEME_ID:
-            return {}
+            return {"schema_version": 2, "colors": {}, "shape": dict(DEFAULT_SHAPE)}
         if not _ID_RE.fullmatch(theme_id):
             raise ThemeStoreError("Identifiant de thème invalide.")
         path = self.root / theme_id / "theme.json"
         if path.is_symlink() or not path.is_file() or self.root.resolve() not in path.resolve().parents:
             raise ThemeStoreError("Le fichier du thème installé est absent ou invalide.")
         try:
-            return _validate_package(json.loads(path.read_text(encoding="utf-8")))["colors"]
+            return _validate_package(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ThemeStoreError(f"Impossible de lire le thème : {exc}") from exc
 
     def bundled_palette(self, theme_id: str) -> dict[str, str]:
-        """Read a bundled preview palette, allowing users to keep a legacy light setting."""
+        return self.bundled_configuration(theme_id)["colors"]
+
+    def bundled_configuration(self, theme_id: str) -> dict[str, Any]:
+        """Read a bundled theme configuration, including when a legacy install is present."""
         if not _ID_RE.fullmatch(theme_id):
             raise ThemeStoreError("Identifiant de thème invalide.")
         path = LOCAL_PACKAGE_ROOT / f"{theme_id}.json"
         try:
-            package = _validate_package(json.loads(path.read_text(encoding="utf-8")))
-            return package["colors"]
+            return _validate_package(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ThemeStoreError(f"Impossible de lire le thème fourni : {exc}") from exc
 
@@ -201,15 +225,29 @@ def _validate_entry(entry: Any) -> str:
 
 
 def _validate_package(package: Any) -> dict[str, Any]:
-    if not isinstance(package, dict) or package.get("schema_version") != 1:
+    if not isinstance(package, dict) or package.get("schema_version") not in {1, 2}:
         raise ThemeStoreError("Format du fichier de thème non reconnu.")
+    version = package["schema_version"]
     colors = package.get("colors")
-    if not isinstance(colors, dict) or len(colors) > len(ALLOWED_COLORS):
+    if not isinstance(colors, dict) or len(colors) > 100:
         raise ThemeStoreError("Palette du thème invalide.")
     for token, color in colors.items():
-        if token not in ALLOWED_COLORS or not isinstance(color, str) or not _COLOR_RE.fullmatch(color):
+        allowed = token in LEGACY_COLOR_VALUES if version == 1 else token in COLOR_TOKENS
+        if not allowed or not isinstance(color, str) or not _COLOR_RE.fullmatch(color):
             raise ThemeStoreError("La palette contient une couleur ou un jeton interdit.")
-    return {"schema_version": 1, "colors": colors}
+    if version == 1:
+        return {"schema_version": 1, "colors": colors, "shape": dict(DEFAULT_SHAPE)}
+
+    shape = package.get("shape", {})
+    if not isinstance(shape, dict) or set(shape) - set(SHAPE_LIMITS):
+        raise ThemeStoreError("Configuration des formes invalide.")
+    normalized_shape = dict(DEFAULT_SHAPE)
+    for field, value in shape.items():
+        minimum, maximum = SHAPE_LIMITS[field]
+        if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+            raise ThemeStoreError(f"Valeur de forme invalide : {field}.")
+        normalized_shape[field] = value
+    return {"schema_version": 2, "colors": colors, "shape": normalized_shape}
 
 
 def _require_raw_github(url: str, message: str) -> None:
