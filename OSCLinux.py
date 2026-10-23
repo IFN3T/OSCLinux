@@ -31,7 +31,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     _apply_pending_update()
     try:
-        from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import QApplication
+        from osclinux.window import MainWindow
     except ImportError:
         print(
             "PySide6 n'est pas installé. Active .venv puis lance : python -m pip install -r requirements.txt",
@@ -39,36 +40,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    class MainWindow(QMainWindow):
-        def __init__(self) -> None:
-            super().__init__()
-            self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
-            self.setMinimumSize(520, 300)
-
-            title = QLabel(APP_NAME)
-            title.setStyleSheet("font-size: 30px; font-weight: 700;")
-            subtitle = QLabel("Programme principal OSCLinux")
-            subtitle.setStyleSheet("font-size: 16px;")
-            status = QLabel("Le programme est lancé.")
-            status.setWordWrap(True)
-            quit_button = QPushButton("Quitter OSCLinux")
-            quit_button.clicked.connect(self.close)
-
-            layout = QVBoxLayout()
-            layout.addWidget(title)
-            layout.addWidget(subtitle)
-            layout.addStretch(1)
-            layout.addWidget(status)
-            layout.addWidget(quit_button)
-            container = QWidget()
-            container.setLayout(layout)
-            self.setCentralWidget(container)
-
     app = QApplication(sys.argv[:1])
     window = MainWindow()
     window.show()
     return app.exec()
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
