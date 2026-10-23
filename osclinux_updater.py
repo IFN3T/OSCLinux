@@ -102,6 +102,10 @@ class ReleaseUpdater:
     def check(self) -> Release | None:
         """Return the newer stable release, or None when already current."""
         payload = self._get_json(self.release_api_url, max_bytes=1_000_000)
+        # GitHub returns 404 from /releases/latest until the repository has its
+        # first published release. That is a normal first-run state.
+        if not payload:
+            return None
         if payload.get("draft") or payload.get("prerelease"):
             return None
         tag = payload.get("tag_name")
@@ -237,6 +241,10 @@ class ReleaseUpdater:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 _check_final_url(response.geturl(), allowed_hosts={"api.github.com"})
                 data = response.read(max_bytes + 1)
+        except urllib.error.HTTPError as exc:
+            if url == self.release_api_url and exc.code == 404:
+                return {}
+            raise UpdateError(f"GitHub a refusé la vérification des mises à jour (HTTP {exc.code}).") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise UpdateError(f"Impossible de consulter les mises à jour GitHub : {exc}") from exc
         if len(data) > max_bytes:
