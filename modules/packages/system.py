@@ -1,4 +1,6 @@
 """CPU, RAM and optional NVIDIA GPU usage."""
+import csv
+import io
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,9 +13,7 @@ def get_text(options):
     if options.get("ram", True):
         values.append(f"RAM {_ram_percent()}%")
     if options.get("gpu", True):
-        gpu = _gpu_percent()
-        if gpu is not None:
-            values.append(f"GPU {gpu}%")
+        values.extend(_gpu_usages())
     return "  |  ".join(values) or "Ressources système"
 
 
@@ -41,12 +41,33 @@ def _ram_percent():
         return 0
 
 
-def _gpu_percent():
+def _gpu_usages():
     command = shutil.which("nvidia-smi")
     if not command:
-        return None
+        return ["GPU NVIDIA indisponible (nvidia-smi absent)"]
     try:
-        result = subprocess.run([command, "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=1, check=False)
-        return round(float(result.stdout.strip().splitlines()[0])) if result.returncode == 0 else None
-    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
-        return None
+        result = subprocess.run(
+            [command, "--query-gpu=index,utilization.gpu", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ["GPU NVIDIA indisponible (pilote non accessible)"]
+
+        readings = []
+        for row in csv.reader(io.StringIO(result.stdout)):
+            if len(row) < 2:
+                continue
+            index, usage = row[0].strip(), row[1].strip()
+            if not index.isdigit():
+                continue
+            try:
+                percent = round(float(usage.removesuffix("%")))
+                readings.append(f"GPU {index} {percent}%")
+            except ValueError:
+                readings.append(f"GPU {index} N/D")
+        return readings or ["GPU NVIDIA indisponible (aucune mesure)"]
+    except (OSError, subprocess.TimeoutExpired):
+        return ["GPU NVIDIA indisponible (délai dépassé)"]
