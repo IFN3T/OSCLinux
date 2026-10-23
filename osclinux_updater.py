@@ -360,6 +360,8 @@ def apply_staged_update(staged: StagedUpdate, *, install_dir: Path, backup_dir: 
             relative = source.relative_to(staged.directory)
             if not _ALLOWED_FILES.fullmatch(relative.as_posix()):
                 raise UpdateError(f"Chemin interdit lors de l'installation : {relative}")
+            if source.is_symlink() or not source.is_file() or staged.directory.resolve() not in source.resolve().parents:
+                raise UpdateError(f"Fichier de mise à jour absent ou lien symbolique : {relative}")
             target = root.joinpath(*relative.parts)
             if root not in target.resolve().parents and target.resolve() != root:
                 raise UpdateError(f"Le fichier cible sort du dossier d'installation : {relative}")
@@ -374,8 +376,11 @@ def apply_staged_update(staged: StagedUpdate, *, install_dir: Path, backup_dir: 
             fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".osclinux-new", dir=target.parent)
             os.close(fd)
             temp_target = Path(temp_name)
-            shutil.copy2(source, temp_target)
-            os.replace(temp_target, target)
+            try:
+                shutil.copy2(source, temp_target)
+                os.replace(temp_target, target)
+            finally:
+                temp_target.unlink(missing_ok=True)
     except Exception as exc:
         for target, backup in reversed(changed):
             try:
