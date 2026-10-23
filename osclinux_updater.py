@@ -161,6 +161,67 @@ class ReleaseUpdater:
         finally:
             archive_path.unlink(missing_ok=True)
 
+    def queue(self, release: Release) -> StagedUpdate:
+        """Stage a release and persist it for application on the next launch."""
+        staged = self.stage(release)
+        marker = self.cache_dir / "pending-update.json"
+        temporary_marker = self.cache_dir / "pending-update.json.tmp"
+        payload = {
+            "version": staged.version,
+            "directory": str(staged.directory.resolve()),
+            "files": [path.relative_to(staged.directory).as_posix() for path in staged.files],
+        }
+        try:
+            descriptor = os.open(temporary_marker, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                json.dump(payload, stream, ensure_ascii=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_marker, marker)
+        except OSError as exc:
+            temporary_marker.unlink(missing_ok=True)
+            shutil.rmtree(staged.directory, ignore_errors=True)
+            raise UpdateError(f"Impossible de préparer le redémarrage avec la mise à jour : {exc}") from exc
+        return staged
+
+    def apply_pending(self, *, install_dir: Path) -> bool:
+        """Apply a queued update before application modules are imported.
+
+        Returns True when an update was installed and the caller should restart
+        the process immediately so Python loads the new code.
+        """
+        marker = self.cache_dir / "pending-update.json"
+        if not marker.exists():
+            return False
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+            version = payload["version"]
+            directory = Path(payload["directory"]).resolve()
+            file_names = payload["files"]
+            if not isinstance(version, str):
+                raise ValueError("version invalide")
+            _version_key(version)
+            if directory.parent != self.cache_dir.resolve() or not directory.name.startswith(f"osclinux-{version}-"):
+                raise ValueError("dossier temporaire hors cache ou invalide")
+            if not isinstance(file_names, list) or not file_names:
+                raise ValueError("liste de fichiers vide ou invalide")
+            files: list[Path] = []
+            for name in file_names:
+                if not isinstance(name, str) or not _ALLOWED_FILES.fullmatch(name):
+                    raise ValueError("chemin de fichier invalide")
+                candidate = directory.joinpath(*PurePosixPath(name).parts)
+                if candidate.is_symlink() or not candidate.is_file() or candidate.resolve().parent != candidate.parent.resolve():
+                    raise ValueError("fichier temporaire absent ou lien symbolique")
+                files.append(candidate)
+            staged = StagedUpdate(version, directory, tuple(files))
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise UpdateError(f"La mise à jour préparée est invalide : {exc}") from exc
+
+        apply_staged_update(staged, install_dir=install_dir)
+        marker.unlink(missing_ok=True)
+        shutil.rmtree(directory, ignore_errors=True)
+        return True
+
     def _get_json(self, url: str, *, max_bytes: int) -> dict[str, Any]:
         request = urllib.request.Request(
             url,
