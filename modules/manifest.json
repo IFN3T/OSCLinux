@@ -33,8 +33,8 @@
       "name": "Indicateur de Performance",
       "description": "Affiche l’utilisation du CPU, de la RAM et de chaque GPU NVIDIA.",
       "author": "OSCLinux",
-      "version": "1.1.0",
-      "sha256": "7e41d2c67adada79fcd50a3a574969dc778ee38916fb8c7bc0ab733f4aa15e2c",
+      "version": "1.2.0",
+      "sha256": "e31c9feb6157316417b836c4924c237891d192a543120ddf6652756219cd6935",
       "settings": [
         {
           "key": "cpu",
