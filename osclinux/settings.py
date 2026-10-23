@@ -13,15 +13,8 @@ SETTINGS_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
 DEFAULTS: dict[str, Any] = {
     "osc": {"host": "127.0.0.1", "port": 9000, "receive_port": 9001, "interval": 2, "mode": "alternate", "startup": False},
     "appearance": {"theme": "dark"},
-    "order": ["spotify", "system", "temperatures", "weather", "clock", "custom"],
-    "modules": {
-        "spotify": {"enabled": True, "interval": 15, "format": "Titre + Artiste + Progression", "hide_paused": True},
-        "system": {"enabled": True, "interval": 10, "cpu": True, "ram": True, "gpu": True},
-        "temperatures": {"enabled": False, "interval": 10, "cpu": True, "gpu": True, "other": False},
-        "weather": {"enabled": False, "interval": 10, "city": "Paris", "unit": "°C"},
-        "clock": {"enabled": False, "interval": 10, "format": "24h"},
-        "custom": {"enabled": False, "interval": 10, "message": "♫ Bonne journée !"},
-    },
+    "module_options": {},
+    "order": [],
 }
 
 
