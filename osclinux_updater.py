@@ -31,7 +31,9 @@ _VERSION_RE = re.compile(
     r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
 )
-_ALLOWED_FILES = re.compile(r"^(?:OSCLinux\.py|osclinux/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)$")
+_ALLOWED_FILES = re.compile(
+    r"^(?:OSCLinux\.py|osclinux_updater\.py|osclinux/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)$"
+)
 
 
 class UpdateError(RuntimeError):
@@ -256,9 +258,9 @@ def _extract_application_zip(archive_path: Path, destination: Path) -> list[Path
 def apply_staged_update(staged: StagedUpdate, *, install_dir: Path, backup_dir: Path | None = None) -> None:
     """Apply a staged release transactionally; call only while the app is stopped.
 
-    Only OSCLinux.py and osclinux/ are replaceable. User configuration, modules,
-    and unrelated files are left alone. Existing files are backed up and restored
-    if any replacement fails.
+    Only OSCLinux.py, osclinux_updater.py, and osclinux/ are replaceable. User
+    configuration, modules, and unrelated files are left alone. Existing files
+    are backed up and restored if any replacement fails.
     """
     root = install_dir.resolve()
     backup_root = (backup_dir or staged.directory.parent / f"backup-{staged.version}").resolve()
