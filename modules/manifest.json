@@ -31,10 +31,10 @@
     {
       "id": "system",
       "name": "Indicateur de Performance",
-      "description": "Affiche l’utilisation des ressources système.",
+      "description": "Affiche l’utilisation du CPU, de la RAM et de chaque GPU NVIDIA.",
       "author": "OSCLinux",
-      "version": "1.0.0",
-      "sha256": "fbfdc817c1ae54cbdc56f0d283d52dbc09dabdd5f2556659450492d96e1679b8",
+      "version": "1.1.0",
+      "sha256": "7e41d2c67adada79fcd50a3a574969dc778ee38916fb8c7bc0ab733f4aa15e2c",
       "settings": [
         {
           "key": "cpu",
