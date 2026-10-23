@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QObject, QTimer, Qt, Signal
+from PySide6.QtCore import QMimeData, QObject, QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QPainter, QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -83,6 +83,8 @@ QScrollArea { border: 0; background: #0d1425; }
 QStackedWidget { background: #0d1425; }
 QScrollArea > QWidget { background: #0d1425; }
 QAbstractScrollArea::viewport { background: #0d1425; }
+QListWidget#timelineSources::item { background: #111c31; border: 1px solid #263a5b; border-radius: 8px; margin: 4px; padding: 8px; }
+QListWidget#timelineSources::item:selected { background: #1b3157; border-color: #5974ff; }
 QLabel { background: transparent; }
 QTextEdit { color: #9db5dd; }
 QStatusBar { color: #8fa6ce; border-top: 1px solid #1c2a45; }
@@ -730,6 +732,10 @@ class MainWindow(QMainWindow):
         available_layout = QVBoxLayout(available_panel)
         available_layout.addWidget(self._section_title("Modules disponibles", "Les modules installés peuvent être placés dans la séquence."))
         self.timeline_sources = ModuleSourceList()
+        self.timeline_sources.setObjectName("timelineSources")
+        self.timeline_sources.setGridSize(QSize(220, 125))
+        self.timeline_sources.setMinimumHeight(135)
+        self.timeline_sources.setMaximumHeight(270)
         self.timeline_sources.setViewMode(QListWidget.ViewMode.IconMode)
         self.timeline_sources.setFlow(QListWidget.Flow.LeftToRight)
         self.timeline_sources.setWrapping(True)
@@ -811,6 +817,7 @@ class MainWindow(QMainWindow):
             entry = entries.get(module_id, {})
             item = QListWidgetItem(f'{entry.get("name", module_id)}\n{version}')
             item.setData(Qt.ItemDataRole.UserRole, module_id)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item.setToolTip("Glissez ce module dans la règle temporelle.")
             self.timeline_sources.addItem(item)
         names = {mid: entries.get(mid, {}).get("name", mid) for mid in installed}
