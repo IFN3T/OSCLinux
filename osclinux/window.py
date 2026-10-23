@@ -444,6 +444,7 @@ class MainWindow(QMainWindow):
             module_id = entry["id"]
             row = QFrame()
             row.setObjectName("moduleCard")
+            row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(14, 10, 12, 10)
             row_layout.setSpacing(14)
