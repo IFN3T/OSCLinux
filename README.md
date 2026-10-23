@@ -8,27 +8,34 @@ interface is added.
 
 `osclinux_updater.py` checks the GitHub stable Releases channel for
 `IFN3T/OSCLinux`. A newer release is offered to the user; the updater does not
-install anything just because a release exists. After confirmation, the caller
-downloads and stages the update. The application should apply the staged files
-after it has exited, before importing the updated modules on the next launch.
+install anything just because a release exists. After confirmation, `queue()`
+downloads and stages the update for the next launch. The application applies it
+before importing the rest of its modules, then restarts to load the new code.
 
 ```python
 from pathlib import Path
+import os
+import sys
 
-from osclinux_updater import ReleaseUpdater, UpdateError, apply_staged_update
+from osclinux_updater import ReleaseUpdater, UpdateError
 
 APP_VERSION = "0.1.0"
 updater = ReleaseUpdater(APP_VERSION)
+install_dir = Path(__file__).resolve().parent
+
+# Run this before importing application modules that may themselves be updated.
+try:
+    if updater.apply_pending(install_dir=install_dir):
+        os.execv(sys.executable, [sys.executable, *sys.argv])
+except UpdateError as exc:
+    print(f"Mise à jour précédente non appliquée : {exc}")
 
 try:
     release = updater.check()
     if release is not None:
         # Present release.title, release.version and release.notes to the user.
-        # Only call stage() after the user chooses to download the update.
-        staged = updater.stage(release)
-        # Persist staged.directory and staged.version for the next launch.
-        # On next launch, after the previous process has stopped:
-        # apply_staged_update(staged, install_dir=Path(__file__).parent)
+        # Only call queue() after the user chooses to download the update.
+        updater.queue(release)
 except UpdateError as exc:
     # Log the error and continue starting the current version offline.
     print(f"Mise à jour indisponible : {exc}")
