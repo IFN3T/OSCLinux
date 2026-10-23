@@ -639,6 +639,7 @@ class MainWindow(QMainWindow):
         self.save_all()
         self._show_timeline_summary(module_id)
         self._append_log(f"Paramètres du module {entry['name']} enregistrés.")
+    @staticmethod
     def _version_newer(candidate: str, current: str) -> bool:
         def parts(value: str) -> tuple[int, ...]:
             try:
