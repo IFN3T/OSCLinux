@@ -33,6 +33,12 @@ are never overwritten by this updater.
 The updater uses only the Python standard library; the main window uses PySide6.
 A network or GitHub error does not prevent the current version from starting.
 
+Run the updater regression checks with:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
 ## Publishing a program update
 
 1. Update `APP_VERSION` in `OSCLinux.py` and commit the release source.
