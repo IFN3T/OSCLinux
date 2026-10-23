@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -21,7 +22,13 @@ def _apply_pending_update() -> None:
         print(f"Mise à jour précédente non appliquée : {exc}", file=sys.stderr)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Programme principal OSCLinux")
+    parser.add_argument("--version", action="store_true", help="Afficher la version installée")
+    args = parser.parse_args(argv)
+    if args.version:
+        print(f"{APP_NAME} {APP_VERSION}")
+        return 0
     _apply_pending_update()
     try:
         from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget
