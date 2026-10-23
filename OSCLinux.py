@@ -58,7 +58,8 @@ def _run_qt_app(updater: ReleaseUpdater) -> int:
         )
     except ImportError:
         print(
-            "PySide6 n'est pas installé. Installe les dépendances avec : python3 -m pip install -r requirements.txt",
+            "PySide6 n'est pas installé. Utilise .venv : python3 -m venv .venv && "
+            "source .venv/bin/activate && python -m pip install -r requirements.txt",
             file=sys.stderr,
         )
         return 2
