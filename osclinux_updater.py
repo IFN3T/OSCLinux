@@ -284,7 +284,9 @@ def apply_staged_update(staged: StagedUpdate, *, install_dir: Path, backup_dir: 
                 backup.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(target, backup)
             changed.append((target, backup))
-            temp_target = target.with_name(target.name + ".osclinux-new")
+            fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".osclinux-new", dir=target.parent)
+            os.close(fd)
+            temp_target = Path(temp_name)
             shutil.copy2(source, temp_target)
             os.replace(temp_target, target)
     except Exception as exc:
