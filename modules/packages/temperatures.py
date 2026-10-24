@@ -13,13 +13,13 @@ def get_text(options):
     values = []
     readings = _hwmon_readings()
     if options.get("cpu", True):
-        cpu_temps = [temp for chip, _label, temp in readings if _is_cpu_chip(chip)]
-        if cpu_temps:
-            values.append(f"CPU {max(cpu_temps):.0f}°C")
+        cpu_temp = _cpu_temperature(readings)
+        if cpu_temp is not None:
+            values.append(f"CPU {cpu_temp:.0f}°C")
         else:
             thermal_temps = _thermal_temps()
             if thermal_temps:
-                values.append(f"CPU {max(thermal_temps):.0f}°C")
+                values.append(f"CPU {sum(thermal_temps) / len(thermal_temps):.0f}°C")
     if options.get("ram", True):
         ram_temps = [temp for chip, _label, temp in readings if _is_ram_chip(chip)]
         if ram_temps:
@@ -59,6 +59,29 @@ def _is_cpu_chip(chip):
 
 def _is_ram_chip(chip):
     return chip in RAM_CHIPS or chip.startswith("jc") or chip.startswith("spd")
+
+
+def _cpu_temperature(readings):
+    cpu_readings = [(label.strip().lower(), temp) for chip, label, temp in readings if _is_cpu_chip(chip)]
+    if not cpu_readings:
+        return None
+
+    # On AMD k10temp, Tctl is a control/fan temperature and can be much hotter
+    # than the die readings. Prefer Tdie, then average the available CCD dies.
+    die_temps = [temp for label, temp in cpu_readings if label == "tdie"]
+    if die_temps:
+        return sum(die_temps) / len(die_temps)
+    ccd_temps = [temp for label, temp in cpu_readings if label.startswith("tccd") or label.startswith("ccd")]
+    if ccd_temps:
+        return sum(ccd_temps) / len(ccd_temps)
+
+    # Intel coretemp exposes a package reading alongside individual cores.
+    package_temps = [temp for label, temp in cpu_readings if label.startswith("package")]
+    if package_temps:
+        return sum(package_temps) / len(package_temps)
+    core_temps = [temp for label, temp in cpu_readings if label.startswith("core")]
+    selected_temps = core_temps or [temp for _label, temp in cpu_readings]
+    return sum(selected_temps) / len(selected_temps)
 
 
 def _thermal_temps():
