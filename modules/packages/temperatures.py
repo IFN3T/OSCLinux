@@ -22,7 +22,9 @@ def get_text(options):
                 values.append(f"CPU {max(thermal_temps):.0f}°C")
     if options.get("ram", True):
         ram_temps = [temp for chip, _label, temp in readings if _is_ram_chip(chip)]
-        values.extend(f"RAM{index} {temp:.0f}°C" for index, temp in enumerate(ram_temps))
+        if ram_temps:
+            average_ram_temp = sum(ram_temps) / len(ram_temps)
+            values.append(f"RAM {average_ram_temp:.0f}°C")
     if options.get("gpu", True):
         values.extend(f"GPU{index} {temperature}°C" for index, temperature in _nvidia_temperatures())
     if options.get("other", False):
