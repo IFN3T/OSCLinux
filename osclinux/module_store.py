@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import json
@@ -18,6 +19,8 @@ from typing import Any
 
 REPOSITORY = "IFN3T/OSCLinux"
 MANIFEST_URL = f"https://raw.githubusercontent.com/{REPOSITORY}/main/modules/manifest.json"
+API_MANIFEST_URL = f"https://api.github.com/repos/{REPOSITORY}/contents/modules/manifest.json?ref=main"
+API_PACKAGE_BASE = f"https://api.github.com/repos/{REPOSITORY}/contents/modules/packages"
 PACKAGE_BASE = f"https://raw.githubusercontent.com/{REPOSITORY}/main/modules/packages"
 MODULE_ROOT = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "osclinux" / "modules"
 LOCAL_MANIFEST = Path(__file__).resolve().parent.parent / "modules" / "manifest.json"
@@ -39,9 +42,20 @@ class ModuleStore:
         self._loaded_modules: dict[str, Any] = {}
 
     def fetch_catalog(self) -> tuple[list[dict[str, Any]], bool]:
+        # Read the manifest through GitHub's Contents API first. The raw content
+        # CDN can keep serving a stale copy after a module release, even when
+        # the request asks intermediaries not to cache it.
+        try:
+            manifest_data = _fetch_github_contents_api(API_MANIFEST_URL, 1_000_000)
+            payload = json.loads(manifest_data.decode("utf-8"))
+            return _validate_manifest(payload), True
+        except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, ValueError, ModuleStoreError):
+            # Retain the raw endpoint as a fallback for API outages or rate limits.
+            pass
+
         request = urllib.request.Request(
             _fresh_url(MANIFEST_URL),
-            headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "application/json", "Cache-Control": "no-cache", "Pragma": "no-cache"},
+            headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "application/json", "Cache-Control": "no-store, no-cache, max-age=0", "Pragma": "no-cache"},
         )
         try:
             with urllib.request.urlopen(request, timeout=8) as response:
@@ -120,17 +134,26 @@ class ModuleStore:
 
     def _download_and_install(self, entry: dict[str, Any], destination: Path, *, replace: bool = False) -> None:
         module_id = _validate_entry(entry)
-        url = f"{PACKAGE_BASE}/{module_id}.py"
-        request = urllib.request.Request(
-            _fresh_url(url),
-            headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "text/plain", "Cache-Control": "no-cache", "Pragma": "no-cache"},
-        )
+        api_url = f"{API_PACKAGE_BASE}/{module_id}.py?ref=main"
         try:
-            with urllib.request.urlopen(request, timeout=10) as response:
-                _require_raw_github(response.geturl(), "Redirection vers un hôte interdit.")
-                package = response.read(2_000_000 + 1)
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise ModuleStoreError(f"Téléchargement du module impossible : {exc}") from exc
+            package = _fetch_github_contents_api(api_url, 2_000_000)
+        except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, ValueError, ModuleStoreError):
+            package = None
+
+        # Use raw.githubusercontent.com only as a fallback. Its CDN can lag
+        # behind the repository contents API after a package is published.
+        if package is None:
+            url = f"{PACKAGE_BASE}/{module_id}.py"
+            request = urllib.request.Request(
+                _fresh_url(url),
+                headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "text/plain", "Cache-Control": "no-store, no-cache, max-age=0", "Pragma": "no-cache"},
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    _require_raw_github(response.geturl(), "Redirection vers un hôte interdit.")
+                    package = response.read(2_000_000 + 1)
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                raise ModuleStoreError(f"Téléchargement du module impossible : {exc}") from exc
         if len(package) > 2_000_000:
             raise ModuleStoreError("Le fichier du module dépasse la limite autorisée.")
         if hashlib.sha256(package).hexdigest() != entry["sha256"]:
@@ -202,3 +225,31 @@ def _require_raw_github(url: str, message: str) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != "raw.githubusercontent.com" or parsed.username or parsed.password or parsed.port not in (None, 443):
         raise ModuleStoreError(message)
+
+
+def _require_github_api(url: str, message: str) -> None:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "api.github.com" or parsed.username or parsed.password or parsed.port not in (None, 443):
+        raise ModuleStoreError(message)
+
+
+def _fetch_github_contents_api(url: str, max_bytes: int) -> bytes:
+    request = urllib.request.Request(
+        _fresh_url(url),
+        headers={
+            "User-Agent": "OSCLinux-ModuleStore/1",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Cache-Control": "no-store, no-cache, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        _require_github_api(response.geturl(), "Hôte GitHub non autorisé.")
+        api_payload = json.loads(response.read(max_bytes * 2 + 65_536).decode("utf-8"))
+    if not isinstance(api_payload, dict) or api_payload.get("encoding") != "base64" or not isinstance(api_payload.get("content"), str):
+        raise ModuleStoreError("Réponse de fichier GitHub invalide.")
+    data = base64.b64decode(api_payload["content"])
+    if len(data) > max_bytes:
+        raise ModuleStoreError("Le fichier téléchargé dépasse la limite autorisée.")
+    return data
