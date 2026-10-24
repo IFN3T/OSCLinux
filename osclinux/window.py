@@ -577,7 +577,10 @@ class MainWindow(QMainWindow):
         self.cycle_timer = QTimer(self)
         self.cycle_timer.setSingleShot(True)
         self.cycle_timer.timeout.connect(self._send_next)
+        self.module_refresh_timer = QTimer(self)
+        self.module_refresh_timer.timeout.connect(self._refresh_current_module)
         self.current_module_id = ""
+        self.current_module_text: str | None = None
         self.current_module_started_at = 0.0
         self.current_module_duration = 0.0
         self.playhead_timer = QTimer(self)
@@ -1452,7 +1455,7 @@ class MainWindow(QMainWindow):
         self.timeline_summary_title.setText(entry.get("name", module_id))
         self.timeline_summary_meta.setText(f'Version {version} · Auteur : {entry.get("author", "—")} · {duration} · {status}')
         self.timeline_summary_description.setText(entry.get("description", "Description non disponible."))
-        preview = self.providers.get(module_id, options, lambda: self.store.load_text(module_id, options))
+        preview = self._module_text(module_id)
         self.timeline_summary_preview.setText(preview or "Aucun contenu à afficher pour le moment.")
 
 
@@ -1636,8 +1639,10 @@ class MainWindow(QMainWindow):
         if self.running:
             self.running = False
             self.cycle_timer.stop()
+            self.module_refresh_timer.stop()
             self.playhead_timer.stop()
             self.current_module_id = ""
+            self.current_module_text = None
             if hasattr(self, "timeline"):
                 self.timeline.set_playhead()
             if self.listener:
@@ -1679,7 +1684,31 @@ class MainWindow(QMainWindow):
         return [module_id for module_id in ordered if options.get(module_id, {}).get("enabled", False)]
     def _module_text(self, module_id: str) -> str:
         options = self.settings.get("module_options", {}).get(module_id, {})
-        return self.providers.get(module_id, options, lambda: self.store.load_text(module_id, options))
+        return self.providers.get(
+            module_id,
+            options,
+            lambda: self.store.load_text(module_id, options),
+            refresh_interval=self._module_refresh_interval(),
+        )
+
+    def _module_refresh_interval(self) -> int:
+        try:
+            return max(1, min(60, int(self.settings.get("osc", {}).get("interval", 2))))
+        except (TypeError, ValueError):
+            return 2
+
+    def _refresh_current_module(self) -> None:
+        if not self.running or not self.current_module_id:
+            return
+        if self.current_module_id not in self._active_modules():
+            return
+        try:
+            text = self._module_text(self.current_module_id)
+            if text not in {"", "Chargement…"} and text != self.current_module_text:
+                self._transmit(text, self.current_module_id)
+                self.current_module_text = text
+        except Exception as exc:
+            self._append_log(f"Erreur module : {exc}")
 
     def _module_duration(self, module_id: str) -> int:
         entry = next((item for item in self.settings.get("timeline", []) if item.get("id") == module_id), {})
@@ -1703,10 +1732,13 @@ class MainWindow(QMainWindow):
                 text = self._module_text(module_id)
                 interval = int(self._module_duration(module_id))
                 self._start_timeline_playhead(module_id, interval)
+                self.current_module_text = None
+                self.module_refresh_timer.start(self._module_refresh_interval() * 1000)
                 if text == "Chargement…":
                     interval = 1
                 else:
                     self._transmit(text, module_id)
+                    self.current_module_text = text
             else:
                 self.active_index %= len(active)
                 module_id = active[self.active_index]
@@ -1714,10 +1746,13 @@ class MainWindow(QMainWindow):
                 text = self._module_text(module_id)
                 interval = int(self._module_duration(module_id))
                 self._start_timeline_playhead(module_id, interval)
+                self.current_module_text = None
+                self.module_refresh_timer.start(self._module_refresh_interval() * 1000)
                 if text == "Chargement…":
                     interval = 1
                 else:
                     self._transmit(text, module_id)
+                    self.current_module_text = text
         except Exception as exc:
             self._append_log(f"Erreur module : {exc}")
             interval = int(self.settings["osc"].get("interval", 2))
@@ -1769,6 +1804,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         if self.running:
             self.cycle_timer.stop()
+            self.module_refresh_timer.stop()
             self.playhead_timer.stop()
             if self.listener:
                 self.listener.stop()
