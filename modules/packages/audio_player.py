@@ -25,7 +25,9 @@ def get_text(options):
         if track_format == "Titre + Artiste":
             return f"♫ {title} — {artist}"
         if position and duration:
-            elapsed, total = int(float(position)), int(float(duration) / 1_000_000)
+            # playerctl exposes both position and mpris:length in microseconds.
+            elapsed = int(float(position) / 1_000_000)
+            total = int(float(duration) / 1_000_000)
             return f"♫ {title} — {artist} · {elapsed // 60:02d}:{elapsed % 60:02d} / {total // 60:02d}:{total % 60:02d}"
         return f"♫ {title} — {artist}"
     except (OSError, ValueError, subprocess.TimeoutExpired):
