@@ -179,7 +179,7 @@ def _validate_entry(entry: Any) -> str:
     for setting in schema:
         if not isinstance(setting, dict) or not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", str(setting.get("key", ""))):
             raise ModuleStoreError(f"Champ de réglage invalide pour {module_id}.")
-        if setting.get("type") not in {"text", "boolean", "choice", "number"} or not isinstance(setting.get("label"), str):
+        if setting.get("type") not in {"text", "boolean", "choice", "number", "player"} or not isinstance(setting.get("label"), str):
             raise ModuleStoreError(f"Type de réglage invalide pour {module_id}.")
         if setting["type"] == "choice" and (not isinstance(setting.get("choices"), list) or not setting["choices"]):
             raise ModuleStoreError(f"Choix invalide pour {module_id}.")
