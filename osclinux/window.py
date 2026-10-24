@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import shlex
 import sys
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QObject, QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QDrag, QPainter, QPen
+from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -161,6 +163,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal, QScrollBar::ad
 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal, QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
 QListWidget#timelineSources::item { background: @card_bg; border: 1px solid @border; border-radius: ${card_radius}px; margin: 4px; padding: 8px; }
 QListWidget#timelineSources::item:selected { background: @timeline_selected; border-color: @timeline_selected_border; }
+QLabel#timelineEmptyState { background: @card_bg; border: 1px solid @border; border-radius: ${card_radius}px; padding: 12px; color: @text_secondary; font-size: 14px; font-weight: 600; }
 QLabel { background: transparent; }
 QTextEdit { color: @text_secondary; }
 QStatusBar { color: @status_text; border-top: 1px solid @status_border; }
@@ -192,37 +195,115 @@ class StoreBridge(QObject):
     completed = Signal(str, object, str)
 
 
+_MODULE_MIME_TYPE = "application/x-osclinux-module-id"
+
+
+def _module_id_from_mime(mime) -> str:
+    if mime.hasFormat(_MODULE_MIME_TYPE):
+        try:
+            return bytes(mime.data(_MODULE_MIME_TYPE)).decode("utf-8").strip()
+        except (TypeError, UnicodeDecodeError):
+            return ""
+    return mime.text().strip() if mime.hasText() else ""
+
+
 class ModuleSourceList(QListWidget):
     moduleDropped = Signal(str)
+    EMPTY_STATE_ROLE = Qt.ItemDataRole.UserRole + 1
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # QAbstractScrollArea delivers drag events to its viewport, not always
+        # to the QListWidget subclass itself. Observe that viewport directly so
+        # dropping a timeline block works over both cards and empty space.
+        self.viewport().setAcceptDrops(True)
+        self.viewport().installEventFilter(self)
+
+    def show_empty_state(self, text: str) -> None:
+        """Show a centered, larger empty-state card while keeping the list droppable."""
+        self.clear()
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        item = QListWidgetItem()
+        item.setData(self.EMPTY_STATE_ROLE, True)
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
+        self.addItem(item)
+
+        card = QLabel(text)
+        card.setObjectName("timelineEmptyState")
+        card.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card.setFixedSize(480, 68)
+        card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        container = QWidget()
+        container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.addWidget(card, 0, Qt.AlignmentFlag.AlignCenter)
+        self.setItemWidget(item, container)
+        self._resize_empty_state_cell()
+
+    def _resize_empty_state_cell(self) -> None:
+        if self.count() != 1 or not self.item(0).data(self.EMPTY_STATE_ROLE):
+            return
+        size = self.viewport().size()
+        cell_size = QSize(max(1, size.width() - 16), max(1, size.height() - 16))
+        self.setGridSize(cell_size)
+        self.item(0).setSizeHint(cell_size)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._resize_empty_state_cell()
 
     def mimeData(self, items):
         mime = super().mimeData(items)
         if items:
             module_id = items[0].data(Qt.ItemDataRole.UserRole)
             if module_id:
-                mime.setText(str(module_id))
+                module_id = str(module_id)
+                mime.setText(module_id)
+                mime.setData(_MODULE_MIME_TYPE, module_id.encode("utf-8"))
         return mime
 
+    def eventFilter(self, watched, event):
+        if watched is self.viewport() and event.type() in (
+            QEvent.Type.DragEnter,
+            QEvent.Type.DragMove,
+            QEvent.Type.Drop,
+        ):
+            module_id = _module_id_from_mime(event.mimeData())
+            if module_id and event.source() is not self:
+                event.setDropAction(Qt.DropAction.MoveAction)
+                event.accept()
+                if event.type() == QEvent.Type.Drop:
+                    self.moduleDropped.emit(module_id)
+                return True
+            event.ignore()
+            return True
+        return super().eventFilter(watched, event)
+
     def dragEnterEvent(self, event):
-        if event.source() is not self and event.mimeData().hasText():
-            event.acceptProposedAction()
+        if event.source() is not self and _module_id_from_mime(event.mimeData()):
+            event.setDropAction(Qt.DropAction.MoveAction)
+            event.accept()
             return
         event.ignore()
 
     def dragMoveEvent(self, event):
-        if event.source() is not self and event.mimeData().hasText():
-            event.acceptProposedAction()
+        if event.source() is not self and _module_id_from_mime(event.mimeData()):
+            event.setDropAction(Qt.DropAction.MoveAction)
+            event.accept()
             return
         event.ignore()
 
     def dropEvent(self, event):
-        if event.source() is self or not event.mimeData().hasText():
+        if event.source() is self:
             event.ignore()
             return
-        module_id = event.mimeData().text().strip()
+        module_id = _module_id_from_mime(event.mimeData())
         if module_id:
+            event.setDropAction(Qt.DropAction.MoveAction)
+            event.accept()
             self.moduleDropped.emit(module_id)
-            event.acceptProposedAction()
             return
         event.ignore()
 
@@ -241,6 +322,7 @@ class TimelineWidget(QWidget):
         self.drag_index = -1
         self.resize_index = -1
         self.press_x = 0
+        self.dragging_block = False
         self.playhead_seconds: float | None = None
         self.setAcceptDrops(True)
         self.setMinimumHeight(125)
@@ -350,6 +432,7 @@ class TimelineWidget(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             self.press_x = int(event.position().x())
             self.drag_index = self._index_at(self.press_x)
+            self.dragging_block = False
             if self.drag_index >= 0:
                 left, width = self._positions()[self.drag_index]
                 self.resize_index = self.drag_index if self.press_x >= left + width - 13 else -1
@@ -365,32 +448,71 @@ class TimelineWidget(QWidget):
             self._update_width()
             self.update()
         elif self.drag_index >= 0 and event.buttons() & Qt.MouseButton.LeftButton:
-            if abs(int(event.position().x()) - self.press_x) >= QApplication.startDragDistance():
-                item = self.sequence[self.drag_index]
-                drag = QDrag(self)
-                mime = QMimeData()
-                mime.setText(item["id"])
-                drag.setMimeData(mime)
-                drag.exec(Qt.DropAction.MoveAction)
-                self.drag_index = -1
+            if not self.dragging_block and abs(int(event.position().x()) - self.press_x) >= QApplication.startDragDistance():
+                self.dragging_block = True
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            if self.dragging_block:
+                available = self._available_modules_at(event.globalPosition().toPoint())
+                self.setCursor(Qt.CursorShape.DragMoveCursor if available else Qt.CursorShape.ClosedHandCursor)
+                self.update()
 
     def mouseReleaseEvent(self, event):
         if self.resize_index >= 0:
             self.resize_index = -1
             self.sequenceChanged.emit([dict(item) for item in self.sequence])
+        elif self.dragging_block and self.drag_index >= 0:
+            index = self.drag_index
+            module = self.sequence[index]
+            available = self._available_modules_at(event.globalPosition().toPoint())
+            if available is not None:
+                # Handle timeline -> available-list removal directly. The
+                # standard Qt drag cursor rejects this cross-scroll-area drop
+                # on some Linux desktops even though both widgets accept it.
+                available.moduleDropped.emit(module["id"])
+            elif self.rect().contains(event.position().toPoint()):
+                self.sequence.pop(index)
+                insert_at = len(self.sequence)
+                x = int(event.position().x())
+                for target_index, (left, width) in enumerate(self._positions()):
+                    if x < left + width // 2:
+                        insert_at = target_index
+                        break
+                self.sequence.insert(insert_at, module)
+                self.selected_id = module["id"]
+                self._update_width()
+                self.update()
+                self.sequenceChanged.emit([dict(item) for item in self.sequence])
         self.drag_index = -1
+        self.dragging_block = False
+        self.unsetCursor()
+        self.update()
+
+    def _available_modules_at(self, global_position):
+        available = self.window().findChild(ModuleSourceList, "timelineSources")
+        if available is None:
+            return None
+        viewport = available.viewport()
+        local_position = viewport.mapFromGlobal(global_position)
+        return available if viewport.rect().contains(local_position) else None
 
     def dragEnterEvent(self, event):
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
+        if _module_id_from_mime(event.mimeData()):
+            event.setDropAction(Qt.DropAction.MoveAction)
+            event.accept()
+            return
+        event.ignore()
 
     def dragMoveEvent(self, event):
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
+        if _module_id_from_mime(event.mimeData()):
+            event.setDropAction(Qt.DropAction.MoveAction)
+            event.accept()
+            return
+        event.ignore()
 
     def dropEvent(self, event):
-        module_id = event.mimeData().text().strip()
+        module_id = _module_id_from_mime(event.mimeData())
         if not module_id:
+            event.ignore()
             return
         existing = next((index for index, item in enumerate(self.sequence) if item["id"] == module_id), -1)
         if existing >= 0:
@@ -409,7 +531,8 @@ class TimelineWidget(QWidget):
         self.update()
         self.sequenceChanged.emit([dict(item) for item in self.sequence])
         self.moduleSelected.emit(module_id)
-        event.acceptProposedAction()
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
 
 
 class MainWindow(QMainWindow):
@@ -949,6 +1072,7 @@ class MainWindow(QMainWindow):
         enabled.setChecked(bool(options.get("enabled", False)))
         form.addRow("État", enabled)
         controls: dict[str, QWidget] = {}
+        player_controls: set[str] = set()
         for setting in entry.get("settings", []):
             key = setting["key"]
             kind = setting["type"]
@@ -960,6 +1084,20 @@ class MainWindow(QMainWindow):
                 control = QComboBox()
                 control.addItems([str(choice) for choice in setting["choices"]])
                 control.setCurrentText(str(value))
+            elif kind == "player":
+                player_controls.add(key)
+                control = QComboBox()
+                players = self._available_media_players()
+                # Keep the saved choice visible if the player is currently closed.
+                if value and str(value) not in players:
+                    control.addItem(f"{value} (indisponible)", str(value))
+                for player in players:
+                    control.addItem(player, player)
+                if not control.count():
+                    control.addItem("Aucun lecteur détecté", "")
+                selected = control.findData(str(value))
+                if selected >= 0:
+                    control.setCurrentIndex(selected)
             elif kind == "number":
                 control = self._spin(int(value), int(setting.get("min", 0)), int(setting.get("max", 100)))
             else:
@@ -978,7 +1116,7 @@ class MainWindow(QMainWindow):
             if isinstance(control, QCheckBox):
                 options[key] = control.isChecked()
             elif isinstance(control, QComboBox):
-                options[key] = control.currentText()
+                options[key] = control.currentData() if key in player_controls else control.currentText()
             elif isinstance(control, QSpinBox):
                 options[key] = control.value()
             elif isinstance(control, QLineEdit):
@@ -987,6 +1125,19 @@ class MainWindow(QMainWindow):
         self.save_all()
         self._show_timeline_summary(module_id)
         self._append_log(f"Paramètres du module {entry['name']} enregistrés.")
+
+    @staticmethod
+    def _available_media_players() -> list[str]:
+        playerctl = shutil.which("playerctl")
+        if not playerctl:
+            return []
+        try:
+            result = subprocess.run([playerctl, "-l"], capture_output=True, text=True, timeout=1, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        if result.returncode:
+            return []
+        return list(dict.fromkeys(line.strip() for line in result.stdout.splitlines() if line.strip()))
     @staticmethod
     def _version_newer(candidate: str, current: str) -> bool:
         def parts(value: str) -> tuple[int, ...]:
@@ -1245,6 +1396,7 @@ class MainWindow(QMainWindow):
         entries = {entry["id"]: entry for entry in self.catalog}
         scheduled = {item["id"] for item in self.settings.get("timeline", [])}
         self.timeline_sources.clear()
+        self.timeline_sources.setGridSize(QSize(220, 125))
         for module_id, version in installed.items():
             if module_id in scheduled:
                 continue
@@ -1255,9 +1407,9 @@ class MainWindow(QMainWindow):
             item.setToolTip("Glissez ce module dans la règle temporelle.")
             self.timeline_sources.addItem(item)
         if self.timeline_sources.count() == 0:
-            placeholder = QListWidgetItem("Tous les modules sont dans la règle")
-            placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.timeline_sources.addItem(placeholder)
+            self.timeline_sources.show_empty_state("Tous les modules sont dans la règle")
+        else:
+            self.timeline_sources.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         names = {mid: entries.get(mid, {}).get("name", mid) for mid in installed}
         self.timeline.set_data(self.settings.get("timeline", []), names)
         if self.timeline.selected_id:
