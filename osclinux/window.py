@@ -496,14 +496,16 @@ class TimelineWidget(QWidget):
         return available if viewport.rect().contains(local_position) else None
 
     def dragEnterEvent(self, event):
-        if _module_id_from_mime(event.mimeData()):
+        module_id = _module_id_from_mime(event.mimeData())
+        if module_id and self._module_is_enabled(module_id):
             event.setDropAction(Qt.DropAction.MoveAction)
             event.accept()
             return
         event.ignore()
 
     def dragMoveEvent(self, event):
-        if _module_id_from_mime(event.mimeData()):
+        module_id = _module_id_from_mime(event.mimeData())
+        if module_id and self._module_is_enabled(module_id):
             event.setDropAction(Qt.DropAction.MoveAction)
             event.accept()
             return
@@ -511,7 +513,7 @@ class TimelineWidget(QWidget):
 
     def dropEvent(self, event):
         module_id = _module_id_from_mime(event.mimeData())
-        if not module_id:
+        if not module_id or not self._module_is_enabled(module_id):
             event.ignore()
             return
         existing = next((index for index, item in enumerate(self.sequence) if item["id"] == module_id), -1)
@@ -533,6 +535,10 @@ class TimelineWidget(QWidget):
         self.moduleSelected.emit(module_id)
         event.setDropAction(Qt.DropAction.MoveAction)
         event.accept()
+
+    def _module_is_enabled(self, module_id: str) -> bool:
+        settings = getattr(self.window(), "settings", {})
+        return bool(settings.get("module_options", {}).get(module_id, {}).get("enabled", False))
 
 
 class MainWindow(QMainWindow):
@@ -1125,6 +1131,7 @@ class MainWindow(QMainWindow):
             elif isinstance(control, QLineEdit):
                 options[key] = control.text()
         self.settings["module_options"][module_id] = options
+        self._ensure_timeline()
         self.save_all()
         self._show_timeline_summary(module_id)
         self._append_log(f"Paramètres du module {entry['name']} enregistrés.")
@@ -1367,6 +1374,19 @@ class MainWindow(QMainWindow):
 
     def _ensure_timeline(self) -> None:
         installed = self.store.installed_versions()
+        module_options = self.settings.setdefault("module_options", {})
+        migrated_options = False
+        for module_id in installed:
+            options = module_options.get(module_id)
+            if not isinstance(options, dict):
+                options = {}
+                module_options[module_id] = options
+                migrated_options = True
+            # Older settings files may not have the activation flag. Treat a
+            # missing flag as enabled, while keeping an explicit False choice.
+            if "enabled" not in options:
+                options["enabled"] = True
+                migrated_options = True
         saved = self.settings.get("timeline")
         if not isinstance(saved, list):
             old_order = self.settings.get("order", [])
@@ -1380,7 +1400,11 @@ class MainWindow(QMainWindow):
             if not isinstance(item, dict):
                 continue
             module_id = item.get("id")
-            if module_id not in installed or module_id in seen:
+            if (
+                module_id not in installed
+                or module_id in seen
+                or not module_options.get(module_id, {}).get("enabled", False)
+            ):
                 continue
             try:
                 duration = max(2, min(120, int(item.get("duration", 10))))
@@ -1390,6 +1414,8 @@ class MainWindow(QMainWindow):
             seen.add(module_id)
         self.settings["timeline"] = normalized
         self.settings["order"] = [item["id"] for item in normalized]
+        if migrated_options:
+            self.save_all()
         self._refresh_timeline()
 
     def _refresh_timeline(self) -> None:
@@ -1404,10 +1430,19 @@ class MainWindow(QMainWindow):
             if module_id in scheduled:
                 continue
             entry = entries.get(module_id, {})
-            item = QListWidgetItem(f'{entry.get("name", module_id)}\n{version}')
+            enabled = bool(self.settings.get("module_options", {}).get(module_id, {}).get("enabled", False))
+            marker = "" if enabled else "●  "
+            item = QListWidgetItem(f'{marker}{entry.get("name", module_id)}\n{version}')
             item.setData(Qt.ItemDataRole.UserRole, module_id)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            item.setToolTip("Glissez ce module dans la règle temporelle.")
+            if enabled:
+                item.setToolTip("Glissez ce module dans la règle temporelle.")
+            else:
+                colors = getattr(self, "theme_colors", DEFAULT_COLORS)
+                item.setForeground(QColor(colors.get("danger_text", "#ff7186")))
+                item.setBackground(QColor(colors.get("danger_bg", "#3a2033")))
+                item.setToolTip("Module désactivé : activez-le dans ses paramètres avant de l’ajouter à la règle.")
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
             self.timeline_sources.addItem(item)
         if self.timeline_sources.count() == 0:
             self.timeline_sources.show_empty_state("Tous les modules sont dans la règle")
@@ -1615,6 +1650,7 @@ class MainWindow(QMainWindow):
                 self.settings["appearance"]["theme"] = BASE_THEME_ID
                 stylesheet = DARK_STYLE
         self._light_theme = theme_id == "light"
+        self.theme_colors = colors
         self.setStyleSheet(stylesheet)
         if hasattr(self, "timeline"):
             self.timeline.set_theme_colors(colors)
