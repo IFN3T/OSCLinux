@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,13 +28,21 @@ class ModuleStoreError(RuntimeError):
     pass
 
 
+def _fresh_url(url: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}_osclinux={time.time_ns()}"
+
+
 class ModuleStore:
     def __init__(self, root: Path = MODULE_ROOT) -> None:
         self.root = root
         self._loaded_modules: dict[str, Any] = {}
 
     def fetch_catalog(self) -> tuple[list[dict[str, Any]], bool]:
-        request = urllib.request.Request(MANIFEST_URL, headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "application/json"})
+        request = urllib.request.Request(
+            _fresh_url(MANIFEST_URL),
+            headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "application/json", "Cache-Control": "no-cache", "Pragma": "no-cache"},
+        )
         try:
             with urllib.request.urlopen(request, timeout=8) as response:
                 _require_raw_github(response.geturl(), "Hôte du catalogue non autorisé.")
@@ -112,7 +121,10 @@ class ModuleStore:
     def _download_and_install(self, entry: dict[str, Any], destination: Path, *, replace: bool = False) -> None:
         module_id = _validate_entry(entry)
         url = f"{PACKAGE_BASE}/{module_id}.py"
-        request = urllib.request.Request(url, headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "text/plain"})
+        request = urllib.request.Request(
+            _fresh_url(url),
+            headers={"User-Agent": "OSCLinux-ModuleStore/1", "Accept": "text/plain", "Cache-Control": "no-cache", "Pragma": "no-cache"},
+        )
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
                 _require_raw_github(response.geturl(), "Redirection vers un hôte interdit.")
