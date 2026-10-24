@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -62,12 +63,20 @@ class ThemeStoreError(RuntimeError):
     pass
 
 
+def _fresh_url(url: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}_osclinux={time.time_ns()}"
+
+
 class ThemeStore:
     def __init__(self, root: Path = THEME_ROOT) -> None:
         self.root = root
 
     def fetch_catalog(self) -> tuple[list[dict[str, Any]], bool]:
-        request = urllib.request.Request(MANIFEST_URL, headers={"User-Agent": "OSCLinux-ThemeStore/1", "Accept": "application/json"})
+        request = urllib.request.Request(
+            _fresh_url(MANIFEST_URL),
+            headers={"User-Agent": "OSCLinux-ThemeStore/1", "Accept": "application/json", "Cache-Control": "no-cache", "Pragma": "no-cache"},
+        )
         try:
             with urllib.request.urlopen(request, timeout=8) as response:
                 _require_raw_github(response.geturl(), "Hôte du catalogue non autorisé.")
@@ -154,7 +163,10 @@ class ThemeStore:
     def _download_and_install(self, entry: dict[str, Any], destination: Path, *, replace: bool = False) -> None:
         theme_id = _validate_entry(entry)
         url = f"{PACKAGE_BASE}/{theme_id}.json"
-        request = urllib.request.Request(url, headers={"User-Agent": "OSCLinux-ThemeStore/1", "Accept": "application/json"})
+        request = urllib.request.Request(
+            _fresh_url(url),
+            headers={"User-Agent": "OSCLinux-ThemeStore/1", "Accept": "application/json", "Cache-Control": "no-cache", "Pragma": "no-cache"},
+        )
         package: bytes | None = None
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
