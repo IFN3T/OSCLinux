@@ -2,13 +2,19 @@
   "schema_version": 1,
   "modules": [
     {
-      "id": "spotify",
-      "name": "Spotify",
-      "description": "Titre, artiste et progression de lecture.",
+      "id": "audio_player",
+      "name": "Lecteur Audio",
+      "description": "Affiche les informations du lecteur média choisi parmi ceux détectés par playerctl.",
       "author": "OSCLinux",
       "version": "1.0.0",
-      "sha256": "441b45f203f02cf9f89ce56b5d76bc60cece3fed6c2d53be497e2fd44d2c06f4",
+      "sha256": "3949087763a583a34413c63df6cc4cba5c7b566eb4f3742321fa476a03b28e70",
       "settings": [
+        {
+          "key": "player",
+          "label": "Lecteur",
+          "type": "player",
+          "default": "spotify"
+        },
         {
           "key": "format",
           "label": "Format",
