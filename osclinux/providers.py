@@ -19,13 +19,19 @@ class ModuleDataProvider:
         self._next_refresh: dict[tuple[str, str], float] = {}
         self._pending: set[tuple[str, str]] = set()
 
-    def get(self, module_id: str, options: dict, loader: Callable[[], str]) -> str:
+    def get(
+        self,
+        module_id: str,
+        options: dict,
+        loader: Callable[[], str],
+        refresh_interval: float = 2.0,
+    ) -> str:
         signature = json.dumps(options, ensure_ascii=False, sort_keys=True, default=str)
         cache_key = (module_id, signature)
         with self._lock:
             value = self._values.get(cache_key, "Chargement…")
             if time.monotonic() >= self._next_refresh.get(cache_key, 0) and cache_key not in self._pending:
-                self._next_refresh[cache_key] = time.monotonic() + 2
+                self._next_refresh[cache_key] = time.monotonic() + max(0.1, refresh_interval)
                 self._pending.add(cache_key)
                 future = self._executor.submit(loader)
                 future.add_done_callback(lambda result, key=cache_key: self._complete(key, result))
