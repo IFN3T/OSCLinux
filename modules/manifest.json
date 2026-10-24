@@ -65,14 +65,20 @@
     {
       "id": "temperatures",
       "name": "Températures",
-      "description": "Températures disponibles du processeur et du GPU.",
+      "description": "Températures du CPU, des barrettes RAM, de chaque GPU NVIDIA et des autres capteurs.",
       "author": "OSCLinux",
-      "version": "1.0.0",
-      "sha256": "ab007e82d3430c7db8731d117c61a962f33afa017230f40beffc2d04c7b7edee",
+      "version": "1.2.0",
+      "sha256": "df11047626573b27abcc6143a1cc635bcf8af824c9cc26031a45dcdd13109d52",
       "settings": [
         {
           "key": "cpu",
           "label": "CPU",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "key": "ram",
+          "label": "RAM",
           "type": "boolean",
           "default": true
         },
