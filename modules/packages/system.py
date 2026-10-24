@@ -14,7 +14,7 @@ def get_text(options):
         values.append(f"RAM {_ram_percent()}%")
     if options.get("gpu", True):
         values.extend(_gpu_usages())
-    return " | ".join(values) or "Ressources système"
+    return "  |  ".join(values) or "Ressources système"
 
 
 def _cpu_percent():
@@ -65,9 +65,9 @@ def _gpu_usages():
                 continue
             try:
                 percent = round(float(usage.removesuffix("%")))
-                readings.append(f"GPU{index} {percent}%")
+                readings.append(f"GPU {index} {percent}%")
             except ValueError:
-                readings.append(f"GPU{index} N/D")
+                readings.append(f"GPU {index} N/D")
         return readings or ["GPU NVIDIA indisponible (aucune mesure)"]
     except (OSError, subprocess.TimeoutExpired):
         return ["GPU NVIDIA indisponible (délai dépassé)"]
