@@ -6,8 +6,8 @@
       "name": "Lecteur Audio",
       "description": "Affiche les informations du lecteur média choisi parmi ceux détectés par playerctl.",
       "author": "OSCLinux",
-      "version": "1.0.0",
-      "sha256": "3949087763a583a34413c63df6cc4cba5c7b566eb4f3742321fa476a03b28e70",
+      "version": "1.0.1",
+      "sha256": "e273153ae26ece916901fcb1d963e88a6b2d1f40a1c08f171d8c0dc78bb5c923",
       "settings": [
         {
           "key": "player",
