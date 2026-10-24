@@ -65,10 +65,10 @@
     {
       "id": "temperatures",
       "name": "Températures",
-      "description": "Températures du CPU, moyenne des barrettes RAM, de chaque GPU NVIDIA et des autres capteurs.",
+      "description": "Températures moyennes du CPU et de la RAM, de chaque GPU NVIDIA et des autres capteurs.",
       "author": "OSCLinux",
-      "version": "1.3.0",
-      "sha256": "daa7bae3c143001e58ab102be6ccc3be3fa1dc6ffe0412a0b7e38404a4417e5a",
+      "version": "1.3.1",
+      "sha256": "afe0992e5766e48650ab38854519a07e59904303e3e40191f6548052d4c4d4da",
       "settings": [
         {
           "key": "cpu",
