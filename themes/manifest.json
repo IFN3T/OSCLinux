@@ -240,6 +240,86 @@
           "sha256": "118f6d89a04dae9d2243c959369617a559a9d6a18833c429667752de91fd7165"
         }
       ]
+    },
+    {
+      "id": "windows7aero",
+      "name": "Windows 7 Aero",
+      "description": "Interface bleu ciel et verre lumineux inspirée du style Aero de Windows 7.",
+      "author": "OSCLinux",
+      "version": "1.0.0",
+      "sha256": "2d5be221bc86806ed87669136bbb5856845d4199214b20666aed3a44832eafa7",
+      "assets": [
+        {
+          "name": "background.webp",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/background.webp",
+          "sha256": "f79a7086bd9ca60b04ece2790e644fe098e13d6319e6f68334f6e7e31b091a06"
+        },
+        {
+          "name": "icon-brand.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-brand.png",
+          "sha256": "61191d9afd3fc17cf6076b064f30c05c8e1eb0e059d9e5b160e516c861c06701"
+        },
+        {
+          "name": "icon-modules.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-modules.png",
+          "sha256": "1b797b77a4fee709ff572a575af5601121eb8cfa0eeb68dad3efede7d842eac1"
+        },
+        {
+          "name": "icon-timeline.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-timeline.png",
+          "sha256": "82cfb92f55e3ed1b3a5cb6483c2cbcc5dfeec23681140df64388cc4c0f17c4af"
+        },
+        {
+          "name": "icon-osc.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-osc.png",
+          "sha256": "1b62fd76f93ad457450512a95cfcf3d7c37ba8522f28148757c72b634f2d6386"
+        },
+        {
+          "name": "icon-themes.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-themes.png",
+          "sha256": "15e64d0459049f2c07ebac0a3fa65218c3c2f8047195dd19a5608377c082ea76"
+        },
+        {
+          "name": "icon-settings.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-settings.png",
+          "sha256": "220aa1fc235b3f3a01b779812d51c939019a0ea1f24c9129f1a795cff9e2badd"
+        },
+        {
+          "name": "icon-journal.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-journal.png",
+          "sha256": "14b92e9139e2992d03fc1f83a5659f15682bfaae417665242658eaa39e167cd7"
+        },
+        {
+          "name": "icon-audio_player.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-audio_player.png",
+          "sha256": "bab087a9a1f4be79d62eddc44695e4fd77f2d3dbaf2428c92b667d23613547ec"
+        },
+        {
+          "name": "icon-system.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-system.png",
+          "sha256": "02449e40dd3ed2adc5bcc4c6dab319068d4a0e7c0328b72ec38a3aad31468a0b"
+        },
+        {
+          "name": "icon-temperatures.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-temperatures.png",
+          "sha256": "32ac3b71a8dce9cb95707e44471253b7b73a41cf8e5414b0f1fe728c635348e6"
+        },
+        {
+          "name": "icon-weather.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-weather.png",
+          "sha256": "beb04fe82c90a9a0b2b204c87e13f966fa1a3149dedd48369f7ca3fe31e524fd"
+        },
+        {
+          "name": "icon-clock.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-clock.png",
+          "sha256": "9328ebe015b67f4dab94d2427c78736fa2763e3e556449ce7ebe47b28d2122f2"
+        },
+        {
+          "name": "icon-custom.png",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/windows7aero/icon-custom.png",
+          "sha256": "c142e434b0a92aa73855e81ee343f1316083aa4b406926194f8971d11eb9c51e"
+        }
+      ]
     }
   ]
 }
