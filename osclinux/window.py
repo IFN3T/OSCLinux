@@ -1888,6 +1888,10 @@ class MainWindow(QMainWindow):
         spin.setRange(minimum, maximum)
         spin.setValue(int(value))
         spin.setSuffix(suffix)
+        # QSpinBox's internal editor does not honor the shared QSS padding
+        # consistently. Match the inset used by QLineEdit so numeric values
+        # line up with text inputs in every theme.
+        spin.lineEdit().setTextMargins(8, 0, 0, 0)
         return spin
 
     def _combo_spin(self, spin: QSpinBox) -> QWidget:
