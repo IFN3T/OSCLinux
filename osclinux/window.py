@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QRectF, QSize, QTimer, QUrl, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QImageReader, QMovie, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QMovie, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtMultimedia import QMediaPlayer, QVideoSink
 from PySide6.QtWidgets import (
     QApplication,
@@ -48,11 +48,105 @@ from PySide6.QtWidgets import (
 )
 
 from osclinux.module_store import ModuleStore, ModuleStoreError
-from osclinux.theme_store import BASE_THEME_ID, ThemeStore, ThemeStoreError
+from osclinux.theme_store import BASE_THEME_ID, LIGHT_THEME_ID, ThemeStore, ThemeStoreError
 from osclinux.providers import ModuleDataProvider
 from osclinux.settings import DEFAULTS, SETTINGS_PATH, load_settings, save_settings
 from osclinux.osc import OscClient, VRChatListener
 from osclinux.version import APP_NAME, APP_VERSION
+
+
+def _theme_icon_pixmap(icon_id: str, icon_definitions=None, icon_visuals=None, size: int = 26, icon_assets=None) -> QPixmap:
+    """Load a theme image icon, render bounded primitives, or use the built-in fallback."""
+    asset_path = (icon_assets or {}).get(icon_id)
+    if asset_path:
+        image_icon = QPixmap(str(asset_path))
+        if not image_icon.isNull():
+            return image_icon.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    scale = size / 32
+    painter.scale(scale, scale)
+    icon_visuals = icon_visuals or {}
+    primary = QColor(icon_visuals.get("foreground_color", "#8fb4ff"))
+    secondary = QColor(icon_visuals.get("secondary_color", "#dce7ff"))
+    stroke_width = float(icon_visuals.get("stroke_width", 2))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(primary, stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+
+    definitions = (icon_definitions or {}).get(icon_id)
+    if definitions:
+        for shape in definitions:
+            kind = shape["type"]
+            if kind == "line":
+                painter.setPen(QPen(QColor(shape["color"]), float(shape["width"]), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+                painter.drawLine(shape["x1"], shape["y1"], shape["x2"], shape["y2"])
+                continue
+            stroke = shape.get("stroke")
+            painter.setPen(QPen(QColor(stroke), float(shape.get("stroke_width", 1))) if stroke else Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(shape["fill"]) if shape.get("fill") else Qt.BrushStyle.NoBrush)
+            if kind == "rect":
+                painter.drawRect(QRectF(shape["x"], shape["y"], shape["width"], shape["height"]))
+            elif kind == "ellipse":
+                painter.drawEllipse(QRectF(shape["x"], shape["y"], shape["width"], shape["height"]))
+            elif kind == "polygon":
+                path = QPainterPath()
+                points = shape["points"]
+                path.moveTo(points[0][0], points[0][1])
+                for x, y in points[1:]:
+                    path.lineTo(x, y)
+                path.closeSubpath()
+                painter.drawPath(path)
+        painter.end()
+        return pixmap
+
+    if icon_id in {"modules", "cube"}:
+        top = QPainterPath(); top.moveTo(16, 4); top.lineTo(27, 10); top.lineTo(16, 16); top.lineTo(5, 10); top.closeSubpath()
+        left = QPainterPath(); left.moveTo(5, 10); left.lineTo(16, 16); left.lineTo(16, 28); left.lineTo(5, 22); left.closeSubpath()
+        right = QPainterPath(); right.moveTo(27, 10); right.lineTo(16, 16); right.lineTo(16, 28); right.lineTo(27, 22); right.closeSubpath()
+        painter.drawPath(top); painter.drawPath(left); painter.drawPath(right)
+    elif icon_id in {"timeline", "clock"}:
+        painter.drawEllipse(5, 5, 22, 22); painter.drawLine(16, 9, 16, 16); painter.drawLine(16, 16, 22, 19)
+        painter.setBrush(secondary); painter.drawEllipse(14, 14, 4, 4)
+    elif icon_id in {"osc", "network"}:
+        painter.setPen(QPen(primary, stroke_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        painter.drawLine(8, 8, 24, 16); painter.drawLine(8, 24, 24, 16); painter.drawLine(8, 8, 8, 24)
+        for x, y, color in ((8, 8, primary), (8, 24, secondary), (24, 16, primary)):
+            painter.setBrush(color); painter.drawEllipse(x - 3, y - 3, 6, 6)
+    elif icon_id in {"themes", "palette"}:
+        painter.drawEllipse(5, 5, 22, 22)
+        for x, y, color in ((11, 11, secondary), (20, 10, primary), (11, 20, primary), (20, 20, secondary)):
+            painter.setBrush(color); painter.drawEllipse(x - 2, y - 2, 4, 4)
+    elif icon_id in {"settings", "gear"}:
+        painter.drawEllipse(10, 10, 12, 12); painter.setBrush(primary); painter.drawEllipse(14, 14, 4, 4)
+        for angle in range(0, 360, 45):
+            painter.save(); painter.translate(16, 16); painter.rotate(angle); painter.drawLine(0, -8, 0, -12); painter.restore()
+    elif icon_id in {"journal", "log"}:
+        painter.drawRoundedRect(7, 4, 19, 24, 2, 2)
+        for y in (11, 16, 21): painter.drawLine(12, y, 22, y)
+        painter.setBrush(secondary); painter.drawEllipse(4, 8, 4, 4); painter.drawEllipse(4, 17, 4, 4)
+    elif icon_id in {"audio", "audio_player", "music"}:
+        note = QPainterPath(); note.moveTo(19, 6); note.lineTo(19, 22); note.cubicTo(18, 26, 11, 27, 10, 23); note.cubicTo(10, 20, 14, 18, 18, 20); note.lineTo(18, 10); note.lineTo(26, 8); note.lineTo(26, 19)
+        painter.drawPath(note); painter.setBrush(secondary); painter.drawEllipse(22, 17, 5, 5); painter.drawEllipse(7, 21, 6, 5)
+    elif icon_id in {"system", "performance"}:
+        painter.setBrush(secondary); painter.drawRoundedRect(6, 18, 5, 10, 1, 1); painter.drawRoundedRect(14, 12, 5, 16, 1, 1); painter.drawRoundedRect(22, 6, 5, 22, 1, 1)
+    elif icon_id in {"temperatures", "temperature"}:
+        painter.drawRoundedRect(12, 5, 8, 17, 4, 4); painter.drawEllipse(9, 19, 14, 12)
+        painter.setPen(QPen(secondary, 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)); painter.drawLine(16, 11, 16, 23); painter.setBrush(secondary); painter.drawEllipse(13, 22, 6, 6)
+    elif icon_id == "weather":
+        painter.drawEllipse(7, 5, 12, 12); painter.setPen(QPen(secondary, 2));
+        for angle in range(0, 360, 45):
+            painter.save(); painter.translate(13, 11); painter.rotate(angle); painter.drawLine(0, -8, 0, -11); painter.restore()
+        painter.setPen(QPen(primary, 2)); painter.drawArc(9, 16, 18, 12, 0, 180 * 16); painter.drawLine(7, 22, 27, 22)
+    elif icon_id in {"custom", "message"}:
+        bubble = QPainterPath(); bubble.moveTo(6, 7); bubble.lineTo(26, 7); bubble.lineTo(26, 21); bubble.lineTo(17, 21); bubble.lineTo(10, 27); bubble.lineTo(11, 21); bubble.lineTo(6, 21); bubble.closeSubpath()
+        painter.drawPath(bubble); painter.setBrush(secondary)
+        for x in (12, 16, 20): painter.drawEllipse(x, 13, 2, 2)
+    else:
+        painter.drawEllipse(6, 6, 20, 20)
+    painter.end()
+    return pixmap
 
 
 class ThemedBackgroundWidget(QWidget):
@@ -162,12 +256,43 @@ class ThemedBackgroundWidget(QWidget):
         painter.setPen(QPen(color, 1.5))
         width, height = bounds.width(), bounds.height()
         if style == "pixel":
-            cell = max(18, min(36, min(width, height) // 28))
-            for row, y in enumerate(range(0, height, cell)):
-                for column, x in enumerate(range(0, width, cell)):
-                    if (row * 7 + column * 11) % 9 == 0:
-                        painter.fillRect(x, y, cell, cell, color)
+            cell = max(20, min(34, min(width, height) // 26))
+            block_colors = [QColor("#477a36"), QColor("#70a647"), QColor("#815332"), QColor("#67432e"), QColor("#4f5244")]
+            for column, x in enumerate(range(0, width, cell)):
+                height_blocks = 2 + ((column * 7 + 3) % 4)
+                if column % 2:
+                    height_blocks = max(2, height_blocks - 1)
+                for row in range(height_blocks):
+                    y = height - (row + 1) * cell
+                    if x < cell * 3 or x > width - cell * 4 or row < 2:
+                        color_index = 0 if row == height_blocks - 1 else 2 + ((column + row) % 2)
+                        if row == height_blocks - 2:
+                            color_index = 1
+                        painter.fillRect(x, y, cell, cell, block_colors[color_index])
+                        painter.setPen(QPen(QColor(255, 255, 255, 24), 1))
+                        painter.drawLine(x, y, x + cell - 1, y)
+                        painter.setPen(QPen(QColor(0, 0, 0, 34), 1))
+                        painter.drawLine(x, y + cell - 1, x + cell, y + cell - 1)
+            painter.setPen(Qt.PenStyle.NoPen)
+            for row in range(4):
+                for column in range(4):
+                    if (row + column) % 3 == 0:
+                        painter.fillRect(width - (column + 1) * cell, row * cell, cell, cell, block_colors[(row + column) % len(block_colors)])
         elif style == "circuit":
+            # Low contrast city silhouettes echo the neon skyline without
+            # obscuring text or changing the application's layout.
+            buildings = [(0, .64, .10, .36), (.035, .52, .10, .48), (.075, .70, .08, .30),
+                         (.88, .66, .09, .34), (.94, .54, .08, .46), (.82, .75, .08, .25)]
+            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 32))
+            for bx, by, bw, bh in buildings:
+                x, y = round(width * bx), round(height * by)
+                w, h = max(16, round(width * bw)), max(24, round(height * bh))
+                painter.drawRect(x, y, w, h)
+                painter.setPen(QPen(color, 1))
+                for wy in range(y + 12, y + h - 8, 18):
+                    for wx in range(x + 7, x + w - 5, 14):
+                        painter.drawPoint(wx, wy)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             for index, (x_ratio, y_ratio) in enumerate(((.08, .22), (.82, .18), (.14, .82), (.9, .76), (.54, .1))):
                 x, y = round(width * x_ratio), round(height * y_ratio)
                 path = QPainterPath()
@@ -176,8 +301,18 @@ class ThemedBackgroundWidget(QWidget):
                 path.lineTo(x + (72 if index % 2 == 0 else -72), y + (42 if index < 3 else -42))
                 painter.drawPath(path)
                 painter.drawEllipse(x - 3, y - 3, 6, 6)
+            painter.setPen(QPen(QColor("#ff35c7"), 1.2))
+            painter.drawLine(0, round(height * .18), round(width * .1), round(height * .18))
+            painter.drawLine(round(width * .9), round(height * .87), width, round(height * .87))
         elif style == "sakura":
-            for x_ratio, y_ratio, size in ((.12, .2, 12), (.82, .16, 10), (.2, .78, 9), (.88, .76, 13), (.55, .1, 8)):
+            painter.setPen(QPen(QColor(color.red(), color.green(), color.blue(), 170), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            branch = QPainterPath(); branch.moveTo(0, 0); branch.cubicTo(width * .08, height * .12, width * .02, height * .22, width * .17, height * .31)
+            branch.cubicTo(width * .22, height * .34, width * .23, height * .41, width * .27, height * .47)
+            painter.drawPath(branch)
+            branch = QPainterPath(); branch.moveTo(width, height); branch.cubicTo(width * .91, height * .87, width * .94, height * .78, width * .82, height * .7)
+            branch.cubicTo(width * .77, height * .66, width * .75, height * .6, width * .72, height * .56)
+            painter.drawPath(branch)
+            for x_ratio, y_ratio, size in ((.08, .13, 12), (.16, .25, 10), (.23, .38, 9), (.28, .48, 9), (.9, .86, 13), (.83, .75, 10), (.76, .64, 9), (.67, .13, 8), (.9, .18, 11)):
                 painter.save()
                 painter.translate(round(width * x_ratio), round(height * y_ratio))
                 for angle in range(0, 360, 72):
@@ -314,6 +449,47 @@ def _build_stylesheet(colors: dict[str, str], shape: dict[str, int] | None = Non
     metrics = {**DEFAULT_SHAPE, **(shape or {})}
     stylesheet = re.sub(r"@([a-z_]+)", lambda match: palette[match.group(1)], _STYLE_TEMPLATE)
     return re.sub(r"\$\{([a-z_]+)\}", lambda match: str(metrics[match.group(1)]), stylesheet)
+
+
+def _default_theme_visuals(colors: dict[str, str]) -> dict:
+    return {
+        "panel": {"border_width": 1, "border_style": "solid", "border_color": colors.get("border", "#263a5b"), "highlight_color": None},
+        "card": {"border_width": 1, "border_style": "solid", "border_color": colors.get("border", "#263a5b"), "highlight_color": None},
+        "button": {"border_width": 1, "border_style": "solid", "border_color": colors.get("button_border", "#2d4266"), "highlight_color": None},
+        "icon": {"background_color": colors.get("button_bg", "#1a2944"), "border_color": colors.get("accent", "#5974ff"), "border_width": 1, "corner_style": "rounded", "stroke_width": 2, "foreground_color": colors.get("accent", "#5974ff"), "secondary_color": colors.get("text_primary", "#dce7ff")},
+    }
+
+
+def _apply_surface_style(stylesheet: str, visuals: dict, shape: dict[str, int], texture_assets: dict | None = None) -> str:
+    """Render bounded per-component border and icon settings from theme JSON."""
+    for object_name, config in (("panel", visuals["panel"]), ("moduleCard", visuals["card"])):
+        width = config["border_width"]
+        border = "none" if width == 0 else f"{width}px {config['border_style']} {config['border_color']}"
+        stylesheet += f"QFrame#{object_name} {{ border: {border}; }}\n"
+        if config["highlight_color"] and width:
+            stylesheet += f"QFrame#{object_name} {{ border-top-color: {config['highlight_color']}; border-left-color: {config['highlight_color']}; }}\n"
+    button = visuals["button"]
+    button_border = "none" if button["border_width"] == 0 else f"{button['border_width']}px {button['border_style']} {button['border_color']}"
+    stylesheet += f"QPushButton, QPushButton#primary, QPushButton#danger, QPushButton#storeAdd, QPushButton#storeRemove, QPushButton#storeUpdate {{ border: {button_border}; }}\n"
+    if button["highlight_color"] and button["border_width"]:
+        stylesheet += f"QPushButton, QPushButton#primary, QPushButton#danger, QPushButton#storeAdd, QPushButton#storeRemove, QPushButton#storeUpdate {{ border-top-color: {button['highlight_color']}; border-left-color: {button['highlight_color']}; }}\n"
+    icon = visuals["icon"]
+    icon_border = "none" if icon["border_width"] == 0 else f"{icon['border_width']}px solid {icon['border_color']}"
+    radius = 0 if icon["corner_style"] == "square" else (24 if icon["corner_style"] == "circle" else shape.get("icon_radius", 20))
+    stylesheet += f"QLabel#icon {{ background: {icon['background_color']}; border: {icon_border}; border-radius: {radius}px; }}\n"
+    texture_selectors = {
+        "panel": "QFrame#panel",
+        "card": "QFrame#moduleCard",
+        "sidebar": "QFrame#sidebar",
+        "topbar": "QFrame#topbar",
+        "button": "QPushButton",
+    }
+    for component, asset_path in (texture_assets or {}).items():
+        selector = texture_selectors.get(component)
+        if selector and asset_path:
+            image_url = QUrl.fromLocalFile(str(asset_path)).toString()
+            stylesheet += f'{selector} {{ border-image: url("{image_url}") 0 0 0 0 stretch stretch; }}\n'
+    return stylesheet
 
 
 def _replace_style_colors(stylesheet: str, replacements: dict[str, str]) -> str:
@@ -706,10 +882,15 @@ class MainWindow(QMainWindow):
         self.theme_catalog: list[dict] = []
         self._theme_by_id: dict[str, dict] = {}
         self._pending_themes: set[str] = set()
+        self.theme_visuals = _default_theme_visuals(DEFAULT_COLORS)
+        self.theme_icon_definitions = {}
+        self.theme_icon_assets = {}
         self.store_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="osclinux-store")
         self.store_bridge = StoreBridge()
         self.store_bridge.completed.connect(self._store_completed)
         self.nav_buttons: list[QPushButton] = []
+        self.nav_icon_ids: list[str] = []
+        self.module_icon_labels: list[tuple[QLabel, str]] = []
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.setMinimumSize(1120, 740)
         self.resize(1540, 980)
@@ -748,26 +929,39 @@ class MainWindow(QMainWindow):
         sidebar.setFixedWidth(230)
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(14, 18, 14, 16)
-        brand = QLabel("◉  OSCLinux")
+        brand_row = QHBoxLayout()
+        brand_icon = QLabel()
+        brand_icon.setObjectName("icon")
+        brand_icon.setFixedSize(38, 38)
+        brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_icon.setPixmap(_theme_icon_pixmap("osc", {}, self.theme_visuals["icon"], 28))
+        self.brand_icon_label = brand_icon
+        brand_row.addWidget(brand_icon)
+        brand = QLabel("OSCLinux")
         brand.setObjectName("title")
-        side.addWidget(brand)
+        brand_row.addWidget(brand)
+        brand_row.addStretch(1)
+        side.addLayout(brand_row)
         subtitle = QLabel("OSC Manager · Modules")
         subtitle.setObjectName("muted")
         side.addWidget(subtitle)
         side.addSpacing(22)
         nav_group = QButtonGroup(self)
         nav_group.setExclusive(True)
-        for index, (text, icon) in enumerate([
-            ("Modules", "▦"), ("Règle Temporelle", "◷"), ("Configuration OSC", "◉"), ("Thèmes", "◈"),
-            ("Paramètres généraux", "⚙"), ("Journal", "▤"),
+        for index, (text, icon_id) in enumerate([
+            ("Modules", "modules"), ("Règle Temporelle", "timeline"), ("Configuration OSC", "osc"), ("Thèmes", "themes"),
+            ("Paramètres généraux", "settings"), ("Journal", "journal"),
         ]):
-            button = QPushButton(f"{icon}   {text}")
+            button = QPushButton(text)
+            button.setIcon(QIcon(_theme_icon_pixmap(icon_id, {}, self.theme_visuals["icon"], 24)))
+            button.setIconSize(QSize(24, 24))
             button.setObjectName("nav")
             button.setCheckable(True)
             button.setChecked(index == 0)
-            button.clicked.connect(lambda _checked=False, i=index: self.pages.setCurrentIndex(i))
+            button.clicked.connect(lambda _checked=False, i=index: self._navigate_to_page(i))
             nav_group.addButton(button, index)
             self.nav_buttons.append(button)
+            self.nav_icon_ids.append(icon_id)
             side.addWidget(button)
         side.addStretch(1)
         brand_card = QFrame()
@@ -845,6 +1039,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(desc)
         return layout
 
+    def _navigate_to_page(self, index: int) -> None:
+        self.pages.setCurrentIndex(index)
+        self._apply_theme_icons()
+
     def _modules_page(self) -> QWidget:
         page = QWidget()
         outer = QVBoxLayout(page)
@@ -909,8 +1107,9 @@ class MainWindow(QMainWindow):
             empty.setObjectName("muted")
             self.theme_catalog_layout.addWidget(empty)
         active = self.settings["appearance"].get("theme", BASE_THEME_ID)
-        self.base_theme_action.setText("Thème actif" if active == BASE_THEME_ID else "Utiliser")
-        self.base_theme_action.setEnabled(active != BASE_THEME_ID)
+        for theme_id, action in self.default_theme_actions.items():
+            action.setText("Thème actif" if active == theme_id else "Utiliser")
+            action.setEnabled(active != theme_id)
         for entry in self.theme_catalog:
             theme_id = entry["id"]
             row = QFrame()
@@ -1016,6 +1215,7 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
         installed = self.store.installed_versions()
+        self.module_icon_labels = []
         if not self.catalog:
             empty = QLabel("Aucun module disponible dans le catalogue.")
             empty.setObjectName("muted")
@@ -1028,6 +1228,13 @@ class MainWindow(QMainWindow):
             row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(14, 10, 12, 10)
             row_layout.setSpacing(14)
+            module_icon = QLabel()
+            module_icon.setObjectName("icon")
+            module_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            module_icon.setFixedSize(50, 50)
+            module_icon.setPixmap(_theme_icon_pixmap(module_id, self.theme_icon_definitions, self.theme_visuals["icon"], 32, self.theme_icon_assets))
+            self.module_icon_labels.append((module_icon, module_id))
+            row_layout.addWidget(module_icon)
             info = QVBoxLayout()
             name = QLabel(entry["name"])
             name.setStyleSheet("font-size:15px;font-weight:700")
@@ -1332,9 +1539,15 @@ class MainWindow(QMainWindow):
         current_panel = QFrame()
         current_panel.setObjectName("panel")
         current_layout = QVBoxLayout(current_panel)
-        current_layout.addWidget(self._section_title("Thème de base", "Toujours installé et impossible à supprimer."))
-        self.base_theme_row = self._build_base_theme_row()
-        current_layout.addWidget(self.base_theme_row)
+        current_layout.addWidget(self._section_title("Thèmes par défaut", "Sombre et Clair sont intégrés à OSCLinux et ne peuvent pas être supprimés."))
+        self.default_theme_actions = {}
+        defaults = (
+            (BASE_THEME_ID, "OSCLinux Sombre", "Thème sombre d’origine d’OSCLinux.", "1.0.0"),
+            (LIGHT_THEME_ID, "Clair", "Thème clair intégré, disponible même hors connexion.", "1.1.0"),
+        )
+        for theme_id, name, description, version in defaults:
+            row = self._build_default_theme_row(theme_id, name, description, version)
+            current_layout.addWidget(row)
         layout.addWidget(current_panel)
 
         catalog_panel = QFrame()
@@ -1354,25 +1567,26 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Limite VRChat : le texte de chatbox est limité à 144 caractères."))
         return self._scroll(page)
 
-    def _build_base_theme_row(self) -> QFrame:
+    def _build_default_theme_row(self, theme_id: str, title: str, description_text: str, version: str) -> QFrame:
         row = QFrame()
         row.setObjectName("moduleCard")
         row_layout = QHBoxLayout(row)
         row_layout.setContentsMargins(14, 10, 12, 10)
         info = QVBoxLayout()
-        name = QLabel("OSCLinux")
+        name = QLabel(title)
         name.setStyleSheet("font-size:15px;font-weight:700")
         info.addWidget(name)
-        description = QLabel("Thème de base intégré. Il reste disponible même si tous les autres thèmes sont supprimés.")
+        description = QLabel(description_text)
         description.setObjectName("muted")
         description.setWordWrap(True)
         info.addWidget(description)
-        info.addWidget(QLabel("Version 1.0.0 · Auteur : OSCLinux"))
+        info.addWidget(QLabel(f"Version {version} · Auteur : OSCLinux"))
         row_layout.addLayout(info, 1)
-        self.base_theme_action = QPushButton("Utiliser")
-        self.base_theme_action.setFixedWidth(110)
-        self.base_theme_action.clicked.connect(lambda: self._use_theme(BASE_THEME_ID))
-        row_layout.addWidget(self.base_theme_action)
+        action = QPushButton("Utiliser")
+        action.setFixedWidth(110)
+        action.clicked.connect(lambda _checked=False, tid=theme_id: self._use_theme(tid))
+        self.default_theme_actions[theme_id] = action
+        row_layout.addWidget(action)
         return row
 
     def _general_page(self) -> QWidget:
@@ -1769,6 +1983,10 @@ class MainWindow(QMainWindow):
             theme_id = BASE_THEME_ID
         colors = dict(DEFAULT_COLORS)
         shape = dict(DEFAULT_SHAPE)
+        visuals = _default_theme_visuals(colors)
+        icon_definitions = {}
+        icon_assets = {}
+        texture_assets = {}
         background_config = None
         background_image_path = None
         pattern_config = None
@@ -1789,16 +2007,33 @@ class MainWindow(QMainWindow):
                     shape.update(configuration["shape"])
                     background_config = configuration.get("background")
                     pattern_config = configuration.get("pattern")
+                    visuals = configuration.get("visuals", visuals)
+                    icon_definitions = configuration.get("icon_drawings", {})
+                    icon_assets = {
+                        icon_id: self.theme_store.asset_path(theme_id, filename)
+                        for icon_id, filename in configuration.get("icons", {}).items()
+                    }
+                    texture_assets = {
+                        surface: self.theme_store.asset_path(theme_id, filename)
+                        for surface, filename in configuration.get("textures", {}).items()
+                    }
                     background_image_path = self.theme_store.background_path(theme_id, configuration)
                     stylesheet = _build_stylesheet(colors, shape)
             except ThemeStoreError as exc:
                 self._append_log(f"Thème {theme_id} invalide : {exc}")
                 theme_id = BASE_THEME_ID
                 self.settings["appearance"]["theme"] = BASE_THEME_ID
+                colors = dict(DEFAULT_COLORS)
+                shape = dict(DEFAULT_SHAPE)
+                visuals = _default_theme_visuals(colors)
+                icon_definitions = {}
+                icon_assets = {}
+                texture_assets = {}
                 stylesheet = DARK_STYLE
                 background_config = None
                 background_image_path = None
                 pattern_config = None
+        stylesheet = _apply_surface_style(stylesheet, visuals, shape, texture_assets)
         if background_config or (pattern_config and pattern_config.get("style") != "none"):
             stylesheet += """
 QStackedWidget#pages { background: transparent; }
@@ -1808,16 +2043,30 @@ QScrollArea#pageScroll QWidget#pageViewport { background: transparent; }
 """
         self._light_theme = theme_id == "light"
         self.theme_colors = colors
+        self.theme_visuals = visuals
+        self.theme_icon_definitions = icon_definitions
+        self.theme_icon_assets = icon_assets
         self.setStyleSheet(stylesheet)
+        self._apply_theme_icons()
         if hasattr(self, "main_area"):
             self.main_area.set_theme_background(background_image_path, background_config, pattern_config)
         if hasattr(self, "timeline"):
             self.timeline.set_theme_colors(colors)
             self.timeline.set_theme_shape(shape)
-        if hasattr(self, "base_theme_action"):
+        if hasattr(self, "default_theme_actions"):
             active = self.settings["appearance"].get("theme", BASE_THEME_ID)
-            self.base_theme_action.setText("Thème actif" if active == BASE_THEME_ID else "Utiliser")
-            self.base_theme_action.setEnabled(active != BASE_THEME_ID)
+            for theme_id, action in self.default_theme_actions.items():
+                action.setText("Thème actif" if active == theme_id else "Utiliser")
+                action.setEnabled(active != theme_id)
+
+    def _apply_theme_icons(self) -> None:
+        icon_visuals = self.theme_visuals.get("icon", {})
+        if hasattr(self, "brand_icon_label"):
+            self.brand_icon_label.setPixmap(_theme_icon_pixmap("osc", self.theme_icon_definitions, icon_visuals, 28, self.theme_icon_assets))
+        for button, icon_id in zip(self.nav_buttons, self.nav_icon_ids):
+            button.setIcon(QIcon(_theme_icon_pixmap(icon_id, self.theme_icon_definitions, icon_visuals, 24, self.theme_icon_assets)))
+        for label, icon_id in self.module_icon_labels:
+            label.setPixmap(_theme_icon_pixmap(icon_id, self.theme_icon_definitions, icon_visuals, 32, self.theme_icon_assets))
 
     def refresh_preview(self) -> None:
         muted_color = "#526580" if getattr(self, "_light_theme", False) else "#8fa6ce"

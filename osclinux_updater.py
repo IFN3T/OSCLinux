@@ -32,7 +32,7 @@ _VERSION_RE = re.compile(
     r"(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
 )
 _ALLOWED_FILES = re.compile(
-    r"^(?:OSCLinux\.py|OSCLinuxUpdater\.py|osclinux_updater\.py|modules/manifest\.json|themes/manifest\.json|themes/packages/[A-Za-z0-9_-]+\.json|osclinux/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)$"
+    r"^(?:OSCLinux\.py|OSCLinuxUpdater\.py|osclinux_updater\.py|modules/manifest\.json|themes/manifest\.json|themes/packages/[A-Za-z0-9_-]+\.json|themes/assets/[a-z0-9][a-z0-9_-]{0,63}/(?:background\.(?:png|jpe?g|webp|gif|webm)|icon-[a-z0-9_-]{1,32}\.(?:png|webp)|texture-[a-z0-9_-]{1,32}\.(?:png|jpe?g|webp))|osclinux/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)$"
 )
 
 
@@ -351,7 +351,7 @@ def _extract_application_zip(archive_path: Path, destination: Path) -> list[Path
 def apply_staged_update(staged: StagedUpdate, *, install_dir: Path, backup_dir: Path | None = None) -> None:
     """Apply a staged release transactionally; call only while the app is stopped.
 
-    Only application files, modules/manifest.json, themes/manifest.json, themes/packages/*.json, and osclinux/ are replaceable. User
+    Only application files, module/theme manifests and packages, validated theme assets, and osclinux/ are replaceable. User
     configuration, modules, and unrelated files are left alone. Existing files
     are backed up and restored if any replacement fails.
     """

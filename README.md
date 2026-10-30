@@ -28,11 +28,11 @@ Chaque paquet Python du catalogue expose `get_text(options) -> str`. Le manifest
 
 ## Catalogue de thèmes
 
-Dans **Thèmes**, le thème de base OSCLinux est toujours installé et ne peut pas être supprimé. Les autres thèmes sont récupérés depuis `themes/manifest.json` et peuvent être installés, appliqués, mis à jour ou supprimés. Chaque paquet est un fichier JSON limité à des couleurs de la palette autorisée ; son empreinte SHA-256 est vérifiée avant installation. Les thèmes installés sont stockés dans `~/.local/share/osclinux/themes/`.
+Dans **Thèmes**, les deux apparences intégrées — **OSCLinux Sombre** et **Clair** — sont toujours disponibles, même hors connexion, et ne peuvent pas être supprimées. Les thèmes optionnels sont récupérés depuis `themes/manifest.json` et peuvent être installés, appliqués, mis à jour ou supprimés. Chaque paquet est un fichier JSON limité aux réglages autorisés ; son empreinte SHA-256 est vérifiée avant installation. Les thèmes installés sont stockés dans `~/.local/share/osclinux/themes/`.
 
-Une entrée de manifeste contient `id`, `name`, `description`, `author`, `version` et `sha256`. Le paquet correspondant est `themes/packages/<id>.json`. Les versions de schéma 1 et 2 restent prises en charge. Le schéma 3 ajoute des motifs décoratifs prédéfinis et une texture facultative en PNG, JPG/JPEG, WebP, GIF ou WebM. La texture est déclarée comme un seul fichier `background.<extension>` dans `background.asset`, puis référencée dans le manifeste par `assets` avec une URL HTTPS et une empreinte SHA-256.
+Le catalogue contient **Cyberpunk 2077**, **Minecraft** et **Sakura**. Les thèmes intégrés ne figurent pas dans ce catalogue et restent protégés contre la désinstallation. Une entrée de manifeste contient `id`, `name`, `description`, `author`, `version`, `sha256` et la liste `assets`. Le paquet correspondant est `themes/packages/<id>.json`. Les versions de schéma 1 et 2 restent prises en charge. Le schéma 3 permet à chaque thème de définir directement sa palette, ses formes, ses bordures, ses dessins d’icônes et les fichiers de fond, d’icône ou de texture auxquels il fait référence.
 
-Les textures distantes doivent utiliser `raw.githubusercontent.com` ; les redirections vers d’autres hôtes sont refusées. Un élément `assets` du manifeste contient `name`, `url` et `sha256`, et doit correspondre au seul fichier déclaré par le paquet. Exemple de réglages pour un fond animé :
+Les ressources distantes doivent être placées sous `themes/assets/<id>/` dans ce dépôt. Les URL doivent utiliser `raw.githubusercontent.com` et viser exactement le dossier du thème ; les redirections vers d’autres chemins ou hôtes sont refusées. Chaque élément `assets` du manifeste contient `name`, `url` et `sha256`, et l’ensemble doit correspondre exactement aux fichiers déclarés par le paquet. Un thème peut référencer `background.png|jpg|webp|gif|webm`, `icon-*.png|webp` et `texture-*.png|jpg|webp`. Les identifiants de composants et de surfaces permis, avec un exemple JSON complet, sont détaillés dans `themes/README.md`.
 
 ```json
 {
@@ -50,11 +50,11 @@ Les textures distantes doivent utiliser `raw.githubusercontent.com` ; les redire
 }
 ```
 
-Les téléchargements sont limités à 16 Mio et vérifiés par empreinte. Les images sont décodées avant installation, avec limites de dimensions, de nombre d’images animées et de pixels décodés. Les WebM doivent avoir une signature EBML valide et sont lus en boucle sans sortie audio. Les thèmes ne peuvent pas fournir de HTML, JavaScript, SVG, CSS libre, URL externe ou fichier local arbitraire ; les formes, couleurs, voiles et motifs restent limités à des réglages connus.
+Les ressources sont limitées à 64 Mio au total, avec des quotas séparés pour les fonds, icônes et textures, et vérifiées par empreinte. Les images sont décodées avant installation, avec limites de dimensions, de nombre d’images animées et de pixels décodés. Les WebM doivent avoir une signature EBML valide et sont lus en boucle sans sortie audio. Les icônes dessinées utilisent des primitives géométriques bornées définies dans le JSON. Les thèmes ne peuvent pas fournir de HTML, JavaScript, SVG, feuille de style ou fichier local arbitraire.
 
 ## Mises à jour
 
-`osclinux_updater.py` consulte les releases stables de `IFN3T/OSCLinux`. Une nouvelle version est proposée à l’utilisateur ; le téléchargement n’a lieu qu’après confirmation. Les archives sont limitées à 50 Mio, contrôlées avec le digest SHA-256 fourni par GitHub et extraites uniquement dans les fichiers de l’application, `modules/manifest.json`, `themes/manifest.json`, `themes/packages/*.json` et `osclinux/`. Les paramètres, modules et thèmes déjà installés ainsi que les autres données utilisateur ne sont pas remplacés.
+`osclinux_updater.py` consulte les releases stables de `IFN3T/OSCLinux`. Une nouvelle version est proposée à l’utilisateur ; le téléchargement n’a lieu qu’après confirmation. Les archives sont limitées à 50 Mio, contrôlées avec le digest SHA-256 fourni par GitHub et extraites uniquement dans les fichiers de l’application, les manifestes et paquets, les ressources de thème validées et `osclinux/`. Les paramètres, modules et thèmes déjà installés ainsi que les autres données utilisateur ne sont pas remplacés.
 
 Pour vérifier le canal manuellement :
 
@@ -63,4 +63,4 @@ source .venv/bin/activate
 python OSCLinuxUpdater.py --check-updates
 ```
 
-Pour publier une mise à jour, augmente `APP_VERSION` dans `osclinux/version.py`, crée une release sémantique (par exemple `v0.3.0`) et joins exactement un fichier `OSCLinux-update.zip` contenant les fichiers application, `modules/manifest.json`, `themes/manifest.json`, `themes/packages/*.json` et les répertoires `osclinux/`. GitHub doit fournir le digest SHA-256 de l’archive.
+Pour publier une mise à jour, augmente `APP_VERSION` dans `osclinux/version.py`, crée une release sémantique (par exemple `v0.3.0`) et joins exactement un fichier `OSCLinux-update.zip` contenant les fichiers application, les manifestes et paquets, les fichiers référencés sous `themes/assets/<id>/` et les répertoires `osclinux/`. GitHub doit fournir le digest SHA-256 de l’archive.

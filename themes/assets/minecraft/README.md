@@ -1,0 +1,1 @@
+Déposez ici les fichiers image de ce thème. Référencez chaque fichier dans themes/packages/minecraft.json et déclarez son URL raw GitHub ainsi que son empreinte SHA-256 dans themes/manifest.json. Voir themes/README.md pour les formats et limites acceptés.

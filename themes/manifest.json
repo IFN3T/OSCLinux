@@ -2,12 +2,49 @@
   "schema_version": 1,
   "themes": [
     {
-      "id": "light",
-      "name": "Clair",
-      "description": "Palette claire avec des contrastes adaptés aux surfaces et aux textes de l’application.",
+      "id": "cyberpunk2077",
+      "name": "Cyberpunk 2077",
+      "description": "Ambiance néon inspirée de Night City : violet profond, rose électrique et cyan.",
       "author": "OSCLinux",
       "version": "1.1.0",
-      "sha256": "20b02af418a0277e28ea022d6cc23c97617906f1751dba3b2ab44bc8a67d1194"
+      "sha256": "0bf03e1d3d28587ddbde44da1016b77e85a7be32bf6467fec6572c98d082cb3a",
+      "assets": [
+        {
+          "name": "background.webp",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/background.webp",
+          "sha256": "28dc4c1074b5dc0dcb0809dddc2bb55a42f83400add0b35527f2fed26df8f28c"
+        }
+      ]
+    },
+    {
+      "id": "minecraft",
+      "name": "Minecraft",
+      "description": "Palette de blocs, verts de prairie et accents terre et pierre avec un motif pixel.",
+      "author": "OSCLinux",
+      "version": "1.1.0",
+      "sha256": "db82f5cea58dca2f9d6b1ed9ffc06325e5c55855a1dc8e0b9e1c7a7d9bf6cd42",
+      "assets": [
+        {
+          "name": "background.webp",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/background.webp",
+          "sha256": "ff152e85b5c50dee8b3e0a1ac71e431392a6727addab4ce09d0e0000d873d62c"
+        }
+      ]
+    },
+    {
+      "id": "sakura",
+      "name": "Sakura",
+      "description": "Thème clair japonais aux tons rose poudré, blanc et motif de fleurs de cerisier.",
+      "author": "OSCLinux",
+      "version": "1.1.0",
+      "sha256": "fd51f73846467cef8fde599b1c1f9d8b67dcf198998831cbc5f18b6f82eb3861",
+      "assets": [
+        {
+          "name": "background.webp",
+          "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/background.webp",
+          "sha256": "ca9abdf8f3c2fefb4dbe1bdf96392075a530412d3ed5d2c3b59ee44df6973ae0"
+        }
+      ]
     }
   ]
 }
