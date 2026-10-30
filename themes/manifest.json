@@ -246,7 +246,7 @@
       "name": "Windows 7 Aero",
       "description": "Interface bleu ciel et verre lumineux inspirée du style Aero de Windows 7.",
       "author": "OSCLinux",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "sha256": "2d5be221bc86806ed87669136bbb5856845d4199214b20666aed3a44832eafa7",
       "assets": [
         {
