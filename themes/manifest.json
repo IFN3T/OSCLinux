@@ -6,7 +6,7 @@
       "name": "Cyberpunk 2077",
       "description": "Ambiance néon inspirée de Night City : violet profond, rose électrique et cyan.",
       "author": "OSCLinux",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "sha256": "8470176f019d4740e891d749730a2fded226e9f381b3258bb7af6dc1ceb1ed9a",
       "assets": [
         {
@@ -17,67 +17,67 @@
         {
           "name": "icon-brand.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-brand.png",
-          "sha256": "990d9780ce1ace0fb152b6edd51676b270e63c365ca53d0a447b97e0ef57ba82"
+          "sha256": "679e7aa9604c11b293f0aa7c6078544f591c940164c7be5f6eefa64992848a64"
         },
         {
           "name": "icon-modules.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-modules.png",
-          "sha256": "95797c95676df07b3baa5c31e638a5b388c79fcaf55fd1b002ba7ab31724caf4"
+          "sha256": "bb080dbfc4212f84092a5c7d27ae0f4d4deaafee541c4ea3374ede1f4b7c7c85"
         },
         {
           "name": "icon-timeline.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-timeline.png",
-          "sha256": "1384f4c9d8a96fa2b1cb93e03b4b875b8733f13f6b522acbb89fa76fee8b5e47"
+          "sha256": "a695ddb221a0fac6632b99cbb57bef686ba1c0ef8a433a7339062a4d80adc160"
         },
         {
           "name": "icon-osc.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-osc.png",
-          "sha256": "3c2e0c0d504d504905b50d0741fdc3cdd3c239c15f4238f22bd284bcdb0c9f77"
+          "sha256": "32cc3936a82f430b59b19b1d7119e19baba34f314ac0490fb3ec52b2187981ca"
         },
         {
           "name": "icon-themes.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-themes.png",
-          "sha256": "40b85f7182cd7ac7ac562a3525e68f1fee5fa6450b3dd54e194e2f0f662c222b"
+          "sha256": "e565e32aec2e09ce8b48267deaa3356cc6bf105bbd355835de02ac4d4410f1a4"
         },
         {
           "name": "icon-settings.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-settings.png",
-          "sha256": "9dbdf0e1639c5c9ad81e705d37b4f43e21e0d80935c4b12eaa00a4412f2454ea"
+          "sha256": "715c21c9d5007cc4a65ee06d59506ad5a67c0da2a9628072e28c24317b7fb194"
         },
         {
           "name": "icon-journal.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-journal.png",
-          "sha256": "1195ce2a7af720e5308d7d82fa116bbff18128a841f40d2803556fb77650f83b"
+          "sha256": "81879ac50be1d6be4e52518b1ce7b3f7a37eee1de26f70d14663d0fe82de0cf9"
         },
         {
           "name": "icon-audio_player.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-audio_player.png",
-          "sha256": "01faf11d664d718637ccfd5bd5d909b23ac03ecd0bb99e72a70af11bf03d0006"
+          "sha256": "eff63e9794c7a482f91dcb0429496fc9a07a3312adc1d21e2dea7741f46a98e7"
         },
         {
           "name": "icon-system.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-system.png",
-          "sha256": "563067b8517ba63ac59443a9f213d8674a4f966ed19ed7d6e87e958d4d9e35a9"
+          "sha256": "dfc0a08ba2bc86d411d200c18ab2772de7a8d48d3afcb95db48a0d938f51f685"
         },
         {
           "name": "icon-temperatures.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-temperatures.png",
-          "sha256": "50c8264a8f5ffa09905d60b8ef72d6ac3c2f2a76cdb46f35f904e61cc203d51a"
+          "sha256": "09fbd8951e01caae886e2e74e683e5ad3b302b86ff207ae8cdf92dbdab79b227"
         },
         {
           "name": "icon-weather.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-weather.png",
-          "sha256": "6cc2970d2815124897f6c4b9f8bef3abef6aac953d68fad32b90d63597c7f57d"
+          "sha256": "eaa5ccf9128dd116cdbeefb5a01c7c8e986059b0373c2d854d70d11c90aa224d"
         },
         {
           "name": "icon-clock.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-clock.png",
-          "sha256": "1384f4c9d8a96fa2b1cb93e03b4b875b8733f13f6b522acbb89fa76fee8b5e47"
+          "sha256": "6cad031be3498bb0e7f15b06aad77f406fe93a8cd120e473917338e8d9f05703"
         },
         {
           "name": "icon-custom.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/cyberpunk2077/icon-custom.png",
-          "sha256": "083031f7d5d212c8829dc5ced9211a13ecd47cf8e095ce8dffe27234f936ff0a"
+          "sha256": "e497021a001cafb4d9a41e1f39c5a5d420001047d86d1acffcf31bf1b789b358"
         }
       ]
     },
@@ -86,7 +86,7 @@
       "name": "Minecraft",
       "description": "Palette de blocs, verts de prairie et accents terre et pierre avec un motif pixel.",
       "author": "OSCLinux",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "sha256": "e417e3dae3ab6b93d16837e9412d2451f7b0efa1f91ead8b8cb40e34d1e6cacb",
       "assets": [
         {
@@ -97,67 +97,67 @@
         {
           "name": "icon-brand.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-brand.png",
-          "sha256": "6500828a8f38ab21169d488f9e5eb9cc7357cf918f25e1b496233935568026c2"
+          "sha256": "e061dc59a0f40e594b1a2dbb2945ba9253c86dc84af2b8775508ae146805302d"
         },
         {
           "name": "icon-modules.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-modules.png",
-          "sha256": "70b4814de1c909472d81962f5e3ce723eea36dde64600cd626e57a026b6a13b7"
+          "sha256": "0dcbe783a35bdafc88cbb93d802240e62c1da7a6b5e32e19bc08c0ccebfaaec8"
         },
         {
           "name": "icon-timeline.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-timeline.png",
-          "sha256": "970b2e75c59439d6e24679b7e080a81748a1073c3e9667d0042a0fbe2450e6b1"
+          "sha256": "511dbc00a4b49c155bed616272e3a7550dd8369a71f0dc2d341b0af1189a087e"
         },
         {
           "name": "icon-osc.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-osc.png",
-          "sha256": "1f37533b1a6b9cc3ffc241d7ba5016b8d65bde673d3ec51168226d0b61d0c1c1"
+          "sha256": "316eb1e6cd804242ba790e38331535d10f5650af9a02c087c99829111a650630"
         },
         {
           "name": "icon-themes.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-themes.png",
-          "sha256": "aaaa87039b2e0794510b9a85881f201070f04a7d5623c6c707441488f33f190b"
+          "sha256": "1f901731d60a279b3f136cf3d81fcb1bc2bca80ce82e6d2a3b0c50eb7978ee1f"
         },
         {
           "name": "icon-settings.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-settings.png",
-          "sha256": "3dfbe837f1f189286c7a393163ad6ec935f1ee547feb5dd01794a4d30338c6a1"
+          "sha256": "d37561350c7b2c362845c45f6aff34fd535db3ba031223212f99b5acb0a3603b"
         },
         {
           "name": "icon-journal.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-journal.png",
-          "sha256": "87cf3fc09546da02d4431441faf76a451ab32cf7c73383b7d219167ab8515ffc"
+          "sha256": "1372caf6feabc6c6d4876748e35e85cca82e4dcddef6432f191bcaf6e527bd11"
         },
         {
           "name": "icon-audio_player.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-audio_player.png",
-          "sha256": "800485b4bd759f801b593ceb7a5998846ea53dafb387f6e30ae5e075bf4b26eb"
+          "sha256": "08a43d8de3009fe359041cb4a215eba7001d8487a09d5d45954be77d6fc4eb28"
         },
         {
           "name": "icon-system.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-system.png",
-          "sha256": "17584888d2c123820720589f95e728da822d90e7fe8e675f0ff5bfeb50f4b370"
+          "sha256": "b236555dfe103781d964c934ed1b28c18e7fb00c21c84ee5ff74363f016cc99a"
         },
         {
           "name": "icon-temperatures.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-temperatures.png",
-          "sha256": "ff4dd00278fbf3a618302824e62142249eac2101fad7beea7ca796fd0d43b8d5"
+          "sha256": "4de28d1971dd21ff19bbcded3b7b3d416b212db65950f430c63dec1410c5b444"
         },
         {
           "name": "icon-weather.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-weather.png",
-          "sha256": "997dbc35e1544bf5e7706eadfa840fe705bc5e1607b5df387bf3391783440230"
+          "sha256": "67dd2a740ee66af246a7b21a204455e95c7526af7210ec0853946720a2c00ceb"
         },
         {
           "name": "icon-clock.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-clock.png",
-          "sha256": "b5c8f6aa758f41895f1d8a1e1f2fcfa5d24b1bbfbdc74fb25eb7817f4a47bb01"
+          "sha256": "99cd4ef1c263b8f1023c7df0812817a1d322a668bb2c701a25c0244ac530cbaa"
         },
         {
           "name": "icon-custom.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/minecraft/icon-custom.png",
-          "sha256": "88263b60ffab2210b8fee671835520cb9a22ee57bd5731da2e6ffdfa961a348b"
+          "sha256": "27bad5c52efe643c24c778f60724c887690a9b2f50cfb980e586cf4b2ba8bd64"
         }
       ]
     },
@@ -166,7 +166,7 @@
       "name": "Sakura",
       "description": "Thème clair japonais aux tons rose poudré, blanc et motif de fleurs de cerisier.",
       "author": "OSCLinux",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "sha256": "572ce5ff934c544ecdd4b9f6255651964c225c740dd3ced16b3798998547b995",
       "assets": [
         {
@@ -177,67 +177,67 @@
         {
           "name": "icon-brand.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-brand.png",
-          "sha256": "27f0da2b541f12e560aec831bfcd10cbc6dfeb74ddd0fef1cd1dec85993e4022"
+          "sha256": "b36a3ebe9c5dbefdc2ad949fd1dc4691e0d063f6c4c2924a130c01c3db2dd060"
         },
         {
           "name": "icon-modules.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-modules.png",
-          "sha256": "fd48ff9bfd95fb8ecb49786ab942179a1f665a08c83e692ada2805d1c3296cd7"
+          "sha256": "5a871522f4fd4fd88552fba2e2c5887d145bf3ef5726c8d80ff379dc08dd7f8d"
         },
         {
           "name": "icon-timeline.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-timeline.png",
-          "sha256": "07e52f4d5dea420d0ea108ec1f40cc6905ddf26c5855d95d0ca9fbe397aa24b1"
+          "sha256": "6b8051f1fe5b630323719897b8da499df4a2c1dabf2bf93f60e1d8fcc606a592"
         },
         {
           "name": "icon-osc.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-osc.png",
-          "sha256": "4ad75fa2935b98a74c772d5fd95989ea59ae780791cde4c536325a3f512e059a"
+          "sha256": "54b7d59250b34ee3a62cb3252d550f9a79f1b5be4a49d87e649dc6bee28b8753"
         },
         {
           "name": "icon-themes.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-themes.png",
-          "sha256": "bf54dea4042e9ff3f46a64b7ec7b57bf4f474330fc3f906ef47d7c47a11d30c4"
+          "sha256": "5e4a1c30eb5537a9accce848e9c4df06877c5dee5f99960bdd1b00786db1e0d9"
         },
         {
           "name": "icon-settings.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-settings.png",
-          "sha256": "04659d67abb7629c356b051527e211bae044e27392399b503934136e174f0dfc"
+          "sha256": "45506606d3788f01663ccb5fbd94ca884ce043a7c27762d361673da454ee091b"
         },
         {
           "name": "icon-journal.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-journal.png",
-          "sha256": "1fcf737f8858d44f9a014bce84157826fff8a8c35f9ea1dbb7af9a63644577aa"
+          "sha256": "880cf98f644494c11981cbc4f1f2cbc71d8331f8ede642e97af0d80a3391428d"
         },
         {
           "name": "icon-audio_player.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-audio_player.png",
-          "sha256": "0a226ee23ba0341e79994785255fdd7000513526e6242bb96561e0096ad1da22"
+          "sha256": "7fc00da34b7c3d6b9e87aacc5c3a8e95a1ac0f0d4d090cda0e8b69402e7f97ff"
         },
         {
           "name": "icon-system.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-system.png",
-          "sha256": "d2359b480603de812fbeea90b58ad2dbd66d32273b794324c4f41325867be7b4"
+          "sha256": "be818f44ae983694f6040788f8977a00e62f3bf41ab9d30954deac9ae7c96350"
         },
         {
           "name": "icon-temperatures.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-temperatures.png",
-          "sha256": "43cc12ab638b9a88f2692d70474cd9faeeaaaeb44f711ac806087f90fcdd0608"
+          "sha256": "29d8cfac898377ee748e51991d710a290e923d0ef8989914b0ff59693fe9055e"
         },
         {
           "name": "icon-weather.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-weather.png",
-          "sha256": "639c87d4bd4b72a992e7b94e6bfea76da10fdf68961b8a3934e5c7f23bc568dd"
+          "sha256": "92843309a72b51cbeefc3a162630f676439ce8272b87a0e5ae460f97f8b677c0"
         },
         {
           "name": "icon-clock.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-clock.png",
-          "sha256": "aa9ad6b3bdc43829f11992a0cb49e4a884186cd841fc3a433b341c7851ab1604"
+          "sha256": "3bb04f98c92fddc3bfaebbebdfa3b40641a98771ccdd404d878670ae6e024d77"
         },
         {
           "name": "icon-custom.png",
           "url": "https://raw.githubusercontent.com/IFN3T/OSCLinux/main/themes/assets/sakura/icon-custom.png",
-          "sha256": "4888d777fd9d2241882ce61a199c132f5761e69ae38e116b171b13d356aff8ba"
+          "sha256": "118f6d89a04dae9d2243c959369617a559a9d6a18833c429667752de91fd7165"
         }
       ]
     }
