@@ -13,8 +13,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtCore import QEvent, QObject, QRectF, QSize, QTimer, QUrl, Qt, Signal
+from PySide6.QtGui import QColor, QImage, QImageReader, QMovie, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtMultimedia import QMediaPlayer, QVideoSink
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -52,6 +53,142 @@ from osclinux.providers import ModuleDataProvider
 from osclinux.settings import DEFAULTS, SETTINGS_PATH, load_settings, save_settings
 from osclinux.osc import OscClient, VRChatListener
 from osclinux.version import APP_NAME, APP_VERSION
+
+
+class ThemedBackgroundWidget(QWidget):
+    """Paint a validated image and one of the built-in decorative patterns."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.background_pixmap = QPixmap()
+        self.background_image = QImage()
+        self.background_movie = None
+        self.background_video = None
+        self.background_image_opacity = 100
+        self.background_fit = "cover"
+        self.background_overlay_color = "#000000"
+        self.background_overlay_opacity = 0
+        self.background_pattern = {"style": "none", "opacity": 0, "color": "#5974ff"}
+
+    def set_theme_background(self, image_path, background: dict | None, pattern: dict | None) -> None:
+        if self.background_movie is not None:
+            self.background_movie.stop()
+            self.background_movie.deleteLater()
+            self.background_movie = None
+        if self.background_video is not None:
+            self.background_video.stop()
+            self.background_video.deleteLater()
+            self.background_video = None
+        self.background_pixmap = QPixmap(str(image_path)) if image_path else QPixmap()
+        self.background_image = QImage()
+        background = background or {}
+        self.background_image_opacity = background.get("image_opacity", 100)
+        self.background_fit = background.get("fit", "cover")
+        self.background_overlay_color = background.get("overlay_color", "#000000")
+        self.background_overlay_opacity = background.get("overlay_opacity", 0)
+        self.background_pattern = pattern or {"style": "none", "opacity": 0, "color": "#5974ff"}
+        if image_path:
+            suffix = Path(image_path).suffix.lower()
+            animated_webp = suffix == ".webp" and QImageReader(str(image_path)).supportsAnimation()
+            if suffix == ".gif" or animated_webp:
+                self.background_movie = QMovie(str(image_path), parent=self)
+                self.background_movie.setCacheMode(QMovie.CacheMode.CacheNone)
+                self.background_movie.frameChanged.connect(self.update)
+                self.background_movie.start()
+            elif suffix == ".webm":
+                self.background_video = QMediaPlayer(self)
+                video_sink = QVideoSink(self.background_video)
+                video_sink.videoFrameChanged.connect(self._video_frame_changed)
+                self.background_video.setVideoSink(video_sink)
+                self.background_video.setLoops(QMediaPlayer.Loops.Infinite)
+                self.background_video.setSource(QUrl.fromLocalFile(str(image_path)))
+                self.background_video.play()
+        self.update()
+
+    def _video_frame_changed(self, frame) -> None:
+        self.background_image = frame.toImage()
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        bounds = self.rect()
+        movie_pixmap = self.background_movie.currentPixmap() if self.background_movie else QPixmap()
+        pixmap = movie_pixmap if not movie_pixmap.isNull() else self.background_pixmap
+        if not pixmap.isNull():
+            image_width, image_height = pixmap.width(), pixmap.height()
+            if self.background_fit == "stretch":
+                target = bounds
+            else:
+                scale_x = bounds.width() / max(1, image_width)
+                scale_y = bounds.height() / max(1, image_height)
+                scale = max(scale_x, scale_y) if self.background_fit == "cover" else min(scale_x, scale_y)
+                width = max(1, round(image_width * scale))
+                height = max(1, round(image_height * scale))
+                target = QRectF((bounds.width() - width) / 2, (bounds.height() - height) / 2, width, height)
+            painter.setOpacity(self.background_image_opacity / 100)
+            painter.drawPixmap(target, pixmap, pixmap.rect())
+            painter.setOpacity(1.0)
+        elif not self.background_image.isNull():
+            image_width, image_height = self.background_image.width(), self.background_image.height()
+            if self.background_fit == "stretch":
+                target = bounds
+            else:
+                scale_x = bounds.width() / max(1, image_width)
+                scale_y = bounds.height() / max(1, image_height)
+                scale = max(scale_x, scale_y) if self.background_fit == "cover" else min(scale_x, scale_y)
+                width = max(1, round(image_width * scale))
+                height = max(1, round(image_height * scale))
+                target = QRectF((bounds.width() - width) / 2, (bounds.height() - height) / 2, width, height)
+            painter.setOpacity(self.background_image_opacity / 100)
+            painter.drawImage(target, self.background_image, self.background_image.rect())
+            painter.setOpacity(1.0)
+        if self.background_overlay_opacity:
+            overlay = QColor(self.background_overlay_color)
+            overlay.setAlpha(round(255 * self.background_overlay_opacity / 100))
+            painter.fillRect(bounds, overlay)
+        self._paint_pattern(painter, bounds)
+
+    def _paint_pattern(self, painter: QPainter, bounds) -> None:
+        pattern = self.background_pattern
+        style = pattern.get("style", "none")
+        opacity = pattern.get("opacity", 0)
+        if style == "none" or not opacity:
+            return
+        color = QColor(pattern.get("color", "#5974ff"))
+        painter.save()
+        painter.setOpacity(opacity / 100)
+        painter.setPen(QPen(color, 1.5))
+        width, height = bounds.width(), bounds.height()
+        if style == "pixel":
+            cell = max(18, min(36, min(width, height) // 28))
+            for row, y in enumerate(range(0, height, cell)):
+                for column, x in enumerate(range(0, width, cell)):
+                    if (row * 7 + column * 11) % 9 == 0:
+                        painter.fillRect(x, y, cell, cell, color)
+        elif style == "circuit":
+            for index, (x_ratio, y_ratio) in enumerate(((.08, .22), (.82, .18), (.14, .82), (.9, .76), (.54, .1))):
+                x, y = round(width * x_ratio), round(height * y_ratio)
+                path = QPainterPath()
+                path.moveTo(x, y)
+                path.lineTo(x + (72 if index % 2 == 0 else -72), y)
+                path.lineTo(x + (72 if index % 2 == 0 else -72), y + (42 if index < 3 else -42))
+                painter.drawPath(path)
+                painter.drawEllipse(x - 3, y - 3, 6, 6)
+        elif style == "sakura":
+            for x_ratio, y_ratio, size in ((.12, .2, 12), (.82, .16, 10), (.2, .78, 9), (.88, .76, 13), (.55, .1, 8)):
+                painter.save()
+                painter.translate(round(width * x_ratio), round(height * y_ratio))
+                for angle in range(0, 360, 72):
+                    painter.save()
+                    painter.rotate(angle)
+                    painter.drawEllipse(-size * .34, -size * 1.15, size * .68, size)
+                    painter.restore()
+                painter.setBrush(color)
+                painter.drawEllipse(-size * .22, -size * .22, size * .44, size * .44)
+                painter.restore()
+        painter.restore()
 
 DEFAULT_COLORS = {
     "window_bg": "#0d1425", "window_text": "#dce7ff", "sidebar_bg": "#0a1120",
@@ -641,7 +778,8 @@ class MainWindow(QMainWindow):
         bc.addWidget(QLabel("Linux · Session locale"))
         side.addWidget(brand_card)
 
-        main_area = QWidget()
+        main_area = ThemedBackgroundWidget()
+        self.main_area = main_area
         main_area.setObjectName("mainArea")
         main_v = QVBoxLayout(main_area)
         main_v.setContentsMargins(0, 0, 0, 0)
@@ -1542,7 +1680,10 @@ class MainWindow(QMainWindow):
         return spin
 
     def _scroll(self, widget: QWidget) -> QScrollArea:
+        widget.setObjectName("pageContent")
         scroll = QScrollArea()
+        scroll.setObjectName("pageScroll")
+        scroll.viewport().setObjectName("pageViewport")
         scroll.setWidgetResizable(True)
         scroll.setWidget(widget)
         return scroll
@@ -1628,6 +1769,9 @@ class MainWindow(QMainWindow):
             theme_id = BASE_THEME_ID
         colors = dict(DEFAULT_COLORS)
         shape = dict(DEFAULT_SHAPE)
+        background_config = None
+        background_image_path = None
+        pattern_config = None
         if theme_id == BASE_THEME_ID:
             stylesheet = DARK_STYLE
         else:
@@ -1643,15 +1787,30 @@ class MainWindow(QMainWindow):
                 if configuration is not None:
                     colors.update(configuration["colors"])
                     shape.update(configuration["shape"])
+                    background_config = configuration.get("background")
+                    pattern_config = configuration.get("pattern")
+                    background_image_path = self.theme_store.background_path(theme_id, configuration)
                     stylesheet = _build_stylesheet(colors, shape)
             except ThemeStoreError as exc:
                 self._append_log(f"Thème {theme_id} invalide : {exc}")
                 theme_id = BASE_THEME_ID
                 self.settings["appearance"]["theme"] = BASE_THEME_ID
                 stylesheet = DARK_STYLE
+                background_config = None
+                background_image_path = None
+                pattern_config = None
+        if background_config or (pattern_config and pattern_config.get("style") != "none"):
+            stylesheet += """
+QStackedWidget#pages { background: transparent; }
+QWidget#pageContent { background: transparent; }
+QScrollArea#pageScroll { background: transparent; }
+QScrollArea#pageScroll QWidget#pageViewport { background: transparent; }
+"""
         self._light_theme = theme_id == "light"
         self.theme_colors = colors
         self.setStyleSheet(stylesheet)
+        if hasattr(self, "main_area"):
+            self.main_area.set_theme_background(background_image_path, background_config, pattern_config)
         if hasattr(self, "timeline"):
             self.timeline.set_theme_colors(colors)
             self.timeline.set_theme_shape(shape)
